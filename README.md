@@ -11,6 +11,8 @@
 
 *Toggle 50+ Explorer settings with instant visual feedback in a modern dark-themed interface*
 
+![Screenshot](screenshot.png)
+
 </div>
 
 ---
