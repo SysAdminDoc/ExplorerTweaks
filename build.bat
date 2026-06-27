@@ -8,7 +8,7 @@ setlocal enabledelayedexpansion
 
 echo.
 echo ============================================
-echo   ExplorerTweaks Build Script v1.0
+echo   ExplorerTweaks Build Script v2.4.0
 echo ============================================
 echo.
 
@@ -17,7 +17,6 @@ python --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Python is not installed or not in PATH.
     echo Please install Python 3.8 or higher from python.org
-    pause
     exit /b 1
 )
 
@@ -30,7 +29,6 @@ REM Check if pip is available
 pip --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] pip is not available.
-    pause
     exit /b 1
 )
 
@@ -40,8 +38,7 @@ pip install pillow --quiet
 
 if errorlevel 1 (
     echo [ERROR] Failed to install dependencies.
-    pause
-    exit /b 1
+        exit /b 1
 )
 echo       Done.
 
@@ -66,28 +63,7 @@ echo [4/5] Building executable...
 echo       This may take a few minutes...
 echo.
 
-REM Build with version info if icon exists
-if exist "icon.ico" (
-    pyinstaller --noconfirm ^
-        --onefile ^
-        --windowed ^
-        --name "ExplorerTweaks" ^
-        --icon "icon.ico" ^
-        --add-data "icon.ico;." ^
-        --hidden-import "customtkinter" ^
-        --collect-all "customtkinter" ^
-        --version-file "version_info.txt" ^
-        explorer_tweaks.py
-) else (
-    pyinstaller --noconfirm ^
-        --onefile ^
-        --windowed ^
-        --name "ExplorerTweaks" ^
-        --hidden-import "customtkinter" ^
-        --collect-all "customtkinter" ^
-        --version-file "version_info.txt" ^
-        explorer_tweaks.py
-)
+pyinstaller --noconfirm ExplorerTweaks.spec
 
 if errorlevel 1 (
     echo.
@@ -98,13 +74,11 @@ if errorlevel 1 (
     echo   - Missing dependencies
     echo   - Insufficient disk space
     echo.
-    pause
     exit /b 1
 )
 
 echo [5/5] Cleaning up build artifacts...
 if exist "build" rmdir /s /q build 2>nul
-if exist "ExplorerTweaks.spec" del /q ExplorerTweaks.spec 2>nul
 echo       Done.
 
 REM Get file size
@@ -125,10 +99,4 @@ echo.
 echo ============================================
 echo.
 
-REM Ask if user wants to run the application
-set /p RUNNOW="Run ExplorerTweaks now? (Y/N): "
-if /i "%RUNNOW%"=="Y" (
-    start "" "dist\ExplorerTweaks.exe"
-)
-
-pause
+exit /b 0
