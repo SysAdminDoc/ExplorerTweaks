@@ -2,6 +2,16 @@
 
 All notable changes to ExplorerTweaks will be documented in this file.
 
+## [v2.7.0] - 2026-06-28
+
+### Added
+- Added a persistent GUI operation log/status panel in the preview column.
+- Added structured operation events for registry plans, refresh attempts, backup/restore, remote apply, recent-item cleanup, Send To removal, policy-lock warnings, and Explorer restart fallback.
+- Added `--dry-run-report FILE` to write JSON operation reports from CLI workflows.
+
+### Fixed
+- Registry plan failures now serialize hive, path, action, error, and recovery hint details for diagnostics.
+
 ## [v2.6.0] - 2026-06-28
 
 ### Added

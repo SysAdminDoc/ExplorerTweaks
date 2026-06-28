@@ -1,6 +1,8 @@
 import contextlib
 import io
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 import warnings
@@ -12,6 +14,9 @@ import explorer_tweaks as et
 
 
 class DeploymentHelperTests(unittest.TestCase):
+    def setUp(self):
+        et.clear_operation_log()
+
     def test_profile_registry_entries_convert_inverted_bool_and_specials(self):
         setting = et.RegistrySetting(
             id="show_extensions",
@@ -139,6 +144,72 @@ class DeploymentHelperTests(unittest.TestCase):
         self.assertTrue(report.success)
         self.assertIs(report.refresh, refresh_report)
         refresh.assert_called_once_with([operation], "test plan")
+
+    def test_operation_report_payload_includes_registry_error_recovery_hint(self):
+        operation = et.registry_set_operation(r"Software\ExplorerTweaks\Test", "A", 1, "DWORD")
+
+        with patch.object(
+            et,
+            "capture_registry_operation_snapshot",
+            return_value=et.RegistryValueSnapshot(False),
+        ), patch.object(et, "apply_registry_operation"), patch.object(
+            et,
+            "verify_registry_operation",
+            return_value=False,
+        ), patch.object(et, "rollback_registry_operation"):
+            report = et.execute_registry_plan([operation], label="failing plan", dry_run=False)
+
+        payload = et.operation_report_payload()
+
+        self.assertFalse(report.success)
+        self.assertEqual(payload["registry_plans"][0]["label"], "failing plan")
+        self.assertIn("Recovery hint", payload["registry_plans"][0]["errors"][0])
+        self.assertEqual(payload["registry_plans"][0]["operations"][0]["hive"], "HKCU")
+        self.assertEqual(payload["registry_plans"][0]["operations"][0]["action"], "set_value")
+
+    def test_write_operation_report_writes_json_file(self):
+        operation = et.registry_set_operation(r"Software\ExplorerTweaks\Test", "A", 1, "DWORD")
+        with patch.object(
+            et,
+            "capture_registry_operation_snapshot",
+            return_value=et.RegistryValueSnapshot(True, 0, et.winreg.REG_DWORD),
+        ):
+            with contextlib.redirect_stdout(io.StringIO()):
+                et.execute_registry_plan([operation], label="dry plan", dry_run=True)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            report_path = Path(tmp) / "report.json"
+            et.write_operation_report(str(report_path))
+            payload = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(payload["app"], et.APP_NAME)
+        self.assertEqual(payload["version"], et.APP_VERSION)
+        self.assertEqual(payload["registry_plans"][0]["label"], "dry plan")
+
+    def test_cli_dry_run_report_writes_structured_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report_path = Path(tmp) / "cli-report.json"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(et.__file__).resolve()),
+                    "--preset",
+                    "Minimal",
+                    "--dry-run",
+                    "--dry-run-report",
+                    str(report_path),
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(payload["app"], et.APP_NAME)
+        self.assertTrue(payload["dry_run"])
+        self.assertTrue(payload["registry_plans"])
+        self.assertTrue(any(event["action"] == "cli" for event in payload["events"]))
 
     def test_theme_settings_declare_theme_refresh_strategy(self):
         settings = {setting.id: setting for setting in et.get_all_settings()}

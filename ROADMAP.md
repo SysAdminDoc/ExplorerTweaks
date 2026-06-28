@@ -6,13 +6,6 @@ Backlog for ExplorerTweaks. Goal: stay focused on File Explorer and closely rela
 
 ### P1
 
-- [ ] P1 - Add operation logs, GUI status, and exportable dry-run reports
-  Why: Backup, restore, deployment, policy lock, and registry write failures are summarized but not retained in a user-visible diagnostic trail.
-  Evidence: `explorer_tweaks.py` messagebox/print flows; Winhance and WinUtil automation transparency.
-  Touches: `explorer_tweaks.py`
-  Acceptance: GUI has a persistent log/status panel, CLI can emit a structured dry-run report, and failures include path, hive, action, error, and recovery hint.
-  Complexity: M
-
 - [ ] P1 - Extend policy and deployment metadata for Intune/MDM
   Why: Existing PowerShell export is useful, but enterprise users need policy/CSP awareness and Settings Catalog/remediation packaging guidance for managed devices.
   Evidence: `explorer_tweaks.py::is_policy_locked`, `build_powershell_script`; Microsoft Policy CSP and Intune Settings Catalog docs.

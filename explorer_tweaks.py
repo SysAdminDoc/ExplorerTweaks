@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ExplorerTweaks v2.6.0 - Windows File Explorer Configuration Utility
+ExplorerTweaks v2.7.0 - Windows File Explorer Configuration Utility
 Pixel-accurate Windows 11 File Explorer and Taskbar simulation.
 
 Author: SysAdminDoc
@@ -20,6 +20,7 @@ import json
 import sys
 import os
 import argparse
+import atexit
 import base64
 import glob as glob_module
 import re
@@ -33,12 +34,13 @@ from enum import Enum
 from pathlib import Path
 
 APP_NAME = "ExplorerTweaks"
-APP_VERSION = "2.6.0"
+APP_VERSION = "2.7.0"
 DARKMODE_TASK_NAME = r"\ExplorerTweaks\DarkModeAutoSwitch"
 DARKMODE_SCRIPT_NAME = "darkmode_auto_switch.ps1"
 
 # Global dry-run flag
 DRY_RUN = False
+OPERATION_LOG: List[Dict[str, Any]] = []
 
 REFRESH_NONE = "none"
 REFRESH_SHELL_NOTIFY = "shell_notify"
@@ -254,6 +256,7 @@ def refresh_registry_strategies(
         print(f"[DRY-RUN] REFRESH {label}: {', '.join(ordered)}")
         if REFRESH_EXPLORER_RESTART in ordered:
             print("[DRY-RUN]   Explorer restart would remain an explicit fallback.")
+        log_operation("refresh", "planned", f"{label}: {', '.join(ordered)}", refresh=shell_refresh_report_to_dict(report))
         return report
 
     if REFRESH_SHELL_NOTIFY in ordered:
@@ -282,6 +285,12 @@ def refresh_registry_strategies(
         print(f"Refresh: {message}")
     for error in report.errors:
         print(f"Refresh warning: {error} Restart Explorer remains available as an explicit fallback.")
+    log_operation(
+        "refresh",
+        "success" if report.success else "warning",
+        f"{label}: {', '.join(ordered)}",
+        refresh=shell_refresh_report_to_dict(report),
+    )
     return report
 
 
@@ -304,6 +313,7 @@ def refresh_shell_now(dry_run: Optional[bool] = None) -> ShellRefreshReport:
 def restart_explorer() -> bool:
     if DRY_RUN:
         print("[DRY-RUN] RESTART Explorer fallback")
+        log_operation("restart_explorer", "planned", "Explorer restart fallback would run.")
         return True
     try:
         result = subprocess.run(
@@ -316,10 +326,48 @@ def restart_explorer() -> bool:
             print(f"Explorer restart warning: {(result.stderr or result.stdout).strip()}")
         subprocess.Popen(["explorer.exe"], creationflags=subprocess.CREATE_NO_WINDOW)
         print("Explorer restarted.")
+        log_operation("restart_explorer", "success", "Explorer restarted as explicit fallback.")
         return True
     except Exception as exc:
         print(f"Explorer restart failed: {exc}")
+        log_operation(
+            "restart_explorer",
+            "error",
+            str(exc),
+            recovery_hint="Retry from an elevated console or restart Explorer from Task Manager.",
+        )
         return False
+
+
+def json_safe(value: Any) -> Any:
+    if isinstance(value, bytes):
+        return {"encoding": "hex", "value": value.hex()}
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, (datetime,)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(key): json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [json_safe(item) for item in value]
+    return value
+
+
+def clear_operation_log() -> None:
+    OPERATION_LOG.clear()
+    LAST_REGISTRY_PLAN_REPORTS.clear()
+
+
+def log_operation(action: str, status: str = "info", message: str = "", **details: Any) -> Dict[str, Any]:
+    event = {
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "action": action,
+        "status": status,
+        "message": message,
+        "details": json_safe(details),
+    }
+    OPERATION_LOG.append(event)
+    return event
 
 def get_registry_value(path: str, name: str, hive: int = winreg.HKEY_CURRENT_USER) -> Optional[Any]:
     try:
@@ -659,6 +707,92 @@ def format_registry_operation_error(operation: RegistryOperation, error: str) ->
     )
 
 
+def registry_operation_to_dict(operation: RegistryOperation) -> Dict[str, Any]:
+    return {
+        "action": operation.action,
+        "hive": hive_display_name(operation.hive),
+        "path": operation.path,
+        "name": operation.name,
+        "target": registry_operation_target(operation),
+        "value": json_safe(operation.value),
+        "type": registry_type_name(operation.reg_type),
+        "label": operation.label,
+        "refresh_strategy": operation.refresh_strategy,
+    }
+
+
+def registry_result_to_dict(result: RegistryOperationResult) -> Dict[str, Any]:
+    return {
+        "operation": registry_operation_to_dict(result.operation),
+        "previous": summarize_registry_snapshot(result.snapshot),
+        "applied": result.applied,
+        "verified": result.verified,
+        "error": result.error,
+    }
+
+
+def shell_refresh_report_to_dict(report: Optional[ShellRefreshReport]) -> Optional[Dict[str, Any]]:
+    if report is None:
+        return None
+    return {
+        "label": report.label,
+        "dry_run": report.dry_run,
+        "strategies": list(report.strategies),
+        "success": report.success,
+        "messages": list(report.messages),
+        "errors": list(report.errors),
+        "restart_available": report.restart_available,
+    }
+
+
+def registry_plan_report_to_dict(report: RegistryPlanReport) -> Dict[str, Any]:
+    return {
+        "label": report.label,
+        "dry_run": report.dry_run,
+        "success": report.success,
+        "planned": report.planned,
+        "applied": report.applied,
+        "verified": report.verified,
+        "rolled_back": report.rolled_back,
+        "errors": list(report.errors),
+        "rollback_errors": list(report.rollback_errors),
+        "refresh": shell_refresh_report_to_dict(report.refresh),
+        "operations": [registry_operation_to_dict(operation) for operation in report.operations],
+        "results": [registry_result_to_dict(result) for result in report.results],
+    }
+
+
+def remember_registry_plan_report(report: RegistryPlanReport) -> RegistryPlanReport:
+    LAST_REGISTRY_PLAN_REPORTS.append(report)
+    status = "success" if report.success else "error"
+    log_operation(
+        "registry_plan",
+        status,
+        f"{report.label}: {report.verified if not report.dry_run else report.planned}/{report.planned} registry operation(s)",
+        plan=registry_plan_report_to_dict(report),
+    )
+    return report
+
+
+def operation_report_payload() -> Dict[str, Any]:
+    return {
+        "app": APP_NAME,
+        "version": APP_VERSION,
+        "created_utc": datetime.now(timezone.utc).isoformat(),
+        "dry_run": DRY_RUN,
+        "events": json_safe(OPERATION_LOG),
+        "registry_plans": [registry_plan_report_to_dict(report) for report in LAST_REGISTRY_PLAN_REPORTS],
+    }
+
+
+def write_operation_report(filepath: str) -> Dict[str, Any]:
+    payload = operation_report_payload()
+    output_path = Path(filepath)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return payload
+
+
 def execute_registry_plan(
     operations: List[RegistryOperation],
     label: str = "registry plan",
@@ -669,8 +803,7 @@ def execute_registry_plan(
     report = RegistryPlanReport(label, effective_dry_run, list(operations))
 
     if not operations:
-        LAST_REGISTRY_PLAN_REPORTS.append(report)
-        return report
+        return remember_registry_plan_report(report)
 
     if effective_dry_run:
         print(f"[DRY-RUN] PLAN {label}: {len(operations)} registry operation(s)")
@@ -689,8 +822,7 @@ def execute_registry_plan(
             print(f"[DRY-RUN]   {operation.action.upper()} {registry_operation_target(operation)}{value_suffix}")
             print(f"[DRY-RUN]     previous: {summarize_registry_snapshot(snapshot)}")
         report.refresh = refresh_registry_changes(operations, label, dry_run=True)
-        LAST_REGISTRY_PLAN_REPORTS.append(report)
-        return report
+        return remember_registry_plan_report(report)
 
     for operation in operations:
         try:
@@ -718,12 +850,10 @@ def execute_registry_plan(
                         report.rollback_errors.append(
                             f"rollback failed for {registry_operation_target(applied_result.operation)}: {rollback_exc}"
                         )
-            LAST_REGISTRY_PLAN_REPORTS.append(report)
-            return report
+            return remember_registry_plan_report(report)
 
     report.refresh = refresh_registry_changes(operations, label)
-    LAST_REGISTRY_PLAN_REPORTS.append(report)
-    return report
+    return remember_registry_plan_report(report)
 
 
 def set_registry_value(path: str, name: str, value: Any, reg_type: str, hive: int = winreg.HKEY_CURRENT_USER) -> bool:
@@ -1020,6 +1150,14 @@ def remote_apply_profile(profile_path: str, computers: List[str], all_users: boo
         print(f"[DRY-RUN] Remote apply profile: {profile_path}")
         print(f"[DRY-RUN] Targets: {', '.join(computers)}")
         print(f"[DRY-RUN] All users: {all_users}")
+        log_operation(
+            "remote_apply",
+            "planned",
+            f"Remote profile apply would target {len(computers)} computer(s).",
+            profile=profile_path,
+            targets=computers,
+            all_users=all_users,
+        )
         return 0
 
     result = subprocess.run(
@@ -1032,7 +1170,24 @@ def remote_apply_profile(profile_path: str, computers: List[str], all_users: boo
         print(result.stdout.strip())
     if result.returncode != 0:
         message = result.stderr.strip() or result.stdout.strip() or "Remote apply failed."
+        log_operation(
+            "remote_apply",
+            "error",
+            message,
+            profile=profile_path,
+            targets=computers,
+            all_users=all_users,
+            recovery_hint="Check WinRM connectivity, credentials, and target PowerShell execution policy.",
+        )
         raise RuntimeError(message)
+    log_operation(
+        "remote_apply",
+        "success",
+        f"Remote profile apply completed for {len(computers)} computer(s).",
+        profile=profile_path,
+        targets=computers,
+        all_users=all_users,
+    )
     return result.returncode
 
 
@@ -1122,6 +1277,16 @@ def apply_profile_values(profile_settings: dict, all_settings: List[RegistrySett
             locked = is_policy_locked(setting.reg_path, setting.reg_name)
             lock_str = " [GP-LOCKED]" if locked else ""
             print(f"  {setting.name}: {target_value}{lock_str}")
+            if locked:
+                log_operation(
+                    "policy_lock",
+                    "warning",
+                    f"{setting.name} is managed by Group Policy.",
+                    hive=target_label,
+                    path=setting.reg_path,
+                    name=setting.reg_name,
+                    recovery_hint="Managed policy may overwrite this preference. Review Group Policy or MDM policy before retrying.",
+                )
             path = setting.reg_path if user_root is None else f"{user_root}\\{setting.reg_path}"
             operations.append(
                 registry_set_operation(
@@ -1164,11 +1329,21 @@ def remove_sendto_entry(path: str) -> bool:
     """Remove a Send To entry."""
     if DRY_RUN:
         print(f"[DRY-RUN] DELETE Send To entry: {path}")
+        log_operation("sendto_remove", "planned", f"Send To entry would be removed: {path}", path=path)
         return True
     try:
         os.remove(path)
+        log_operation("sendto_remove", "success", f"Send To entry removed: {path}", path=path)
         return True
-    except:
+    except Exception as exc:
+        log_operation(
+            "sendto_remove",
+            "error",
+            f"Could not remove Send To entry: {path}",
+            path=path,
+            error=str(exc),
+            recovery_hint="Close programs using the shortcut and retry.",
+        )
         return False
 
 
@@ -1191,6 +1366,7 @@ def wipe_recent_items() -> Dict[str, int]:
                 count = len(os.listdir(d))
                 print(f"[DRY-RUN] Would delete {count} files in {d}")
                 results["deleted"] += count
+        log_operation("wipe_recent", "planned", "Recent item cleanup planned.", results=results, targets=targets)
         return results
 
     for d in targets:
@@ -1203,6 +1379,13 @@ def wipe_recent_items() -> Dict[str, int]:
                         results["deleted"] += 1
                     except:
                         results["errors"] += 1
+    log_operation(
+        "wipe_recent",
+        "success" if results["errors"] == 0 else "warning",
+        f"Deleted {results['deleted']} recent item file(s).",
+        results=results,
+        targets=targets,
+    )
     return results
 
 
@@ -1640,6 +1823,7 @@ def create_backup_bundle(filepath: str) -> Dict[str, Any]:
         print(f"[DRY-RUN] CREATE backup bundle: {filepath}")
         for path in backup_registry_paths(settings):
             print(f"[DRY-RUN] EXPORT HKCU\\{path}")
+        log_operation("backup", "planned", f"Backup bundle would be created: {filepath}", metadata=metadata)
         return metadata
 
     with tempfile.TemporaryDirectory(prefix="ExplorerTweaksBackup_") as temp_dir:
@@ -1687,6 +1871,15 @@ def create_backup_bundle(filepath: str) -> Dict[str, Any]:
                 if item.is_file():
                     zf.write(item, item.relative_to(temp_path).as_posix())
 
+    log_operation(
+        "backup",
+        "success",
+        f"Backup bundle created: {filepath}",
+        registry_exports=len(metadata.get("registry_exports", [])),
+        missing_registry_paths=len(metadata.get("missing_registry_paths", [])),
+        has_wallpaper=metadata.get("wallpaper") is not None,
+        has_taskbar_pins=metadata.get("taskbar_pins") is not None,
+    )
     return metadata
 
 
@@ -1704,6 +1897,7 @@ def restore_backup_bundle(filepath: str) -> Dict[str, int]:
                 export_file = export.get("file", "")
                 operations = parse_reg_file_operations(zf.read(export_file), export_file)
                 execute_registry_plan(operations, label=f"restore {export_file}", dry_run=True)
+        log_operation("restore", "planned", f"Backup bundle restore would run: {filepath}", results=results)
         return results
 
     with tempfile.TemporaryDirectory(prefix="ExplorerTweaksRestore_") as temp_dir:
@@ -1746,6 +1940,12 @@ def restore_backup_bundle(filepath: str) -> Dict[str, int]:
                         shutil.copy2(item, Path(original) / item.name)
                         results["files_restored"] += 1
 
+    log_operation(
+        "restore",
+        "success" if results["errors"] == 0 else "warning",
+        f"Backup bundle restore completed: {filepath}",
+        results=results,
+    )
     return results
 
 
@@ -3253,15 +3453,65 @@ class App(ctk.CTk):
         self.preview_panel.grid(row=0, column=2, sticky="nsew")
         self.preview_panel.grid_propagate(False)
         self.preview_panel.grid_columnconfigure(0, weight=1)
-        self.preview_panel.grid_rowconfigure(1, weight=1)
+        self.preview_panel.grid_rowconfigure(1, weight=0)
+        self.preview_panel.grid_rowconfigure(2, weight=1)
         
         self.preview_title = ctk.CTkLabel(self.preview_panel, text="👁 Preview", font=ctk.CTkFont(size=13, weight="bold"), text_color=UI["text"])
         self.preview_title.grid(row=0, column=0, sticky="w", padx=12, pady=(12, 4))
+        self._build_operation_log()
         
         self.preview_container = ctk.CTkFrame(self.preview_panel, fg_color="transparent")
-        self.preview_container.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 6))
+        self.preview_container.grid(row=2, column=0, sticky="nsew", padx=6, pady=(0, 4))
         self.preview_container.grid_columnconfigure(0, weight=1)
         self.preview_container.grid_rowconfigure(0, weight=1)
+
+    def _build_operation_log(self):
+        self.log_panel = ctk.CTkFrame(self.preview_panel, fg_color=UI["card"], corner_radius=8)
+        self.log_panel.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 8))
+        self.log_panel.grid_columnconfigure(0, weight=1)
+
+        header = ctk.CTkFrame(self.log_panel, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=10, pady=(8, 2))
+        header.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(header, text="Operation Log", font=ctk.CTkFont(size=11, weight="bold"), text_color=UI["text"]).grid(row=0, column=0, sticky="w")
+        self.operation_status = ctk.CTkLabel(header, text="Ready", font=ctk.CTkFont(size=9), text_color=UI["text_dim"])
+        self.operation_status.grid(row=0, column=1, sticky="e")
+
+        self.operation_log_box = ctk.CTkTextbox(
+            self.log_panel,
+            height=92,
+            fg_color=UI["bg"],
+            border_color=UI["border"],
+            border_width=1,
+            text_color=UI["text_sec"],
+            font=ctk.CTkFont(size=10),
+            wrap="word",
+        )
+        self.operation_log_box.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
+        self.operation_log_box.configure(state="disabled")
+        self._set_status("Ready.")
+
+    def _set_status(self, message: str, status: str = "info"):
+        log_operation("gui_status", status, message)
+        self._refresh_operation_log()
+
+    def _refresh_operation_log(self):
+        if not hasattr(self, "operation_log_box"):
+            return
+        events = OPERATION_LOG[-6:]
+        latest = events[-1]["message"] if events else "Ready."
+        self.operation_status.configure(text=latest[:42])
+        lines = []
+        for event in events:
+            stamp = event.get("timestamp_utc", "")[11:19]
+            level = event.get("status", "info").upper()
+            action = event.get("action", "event")
+            message = event.get("message", "")
+            lines.append(f"{stamp} {level} {action}: {message}")
+        self.operation_log_box.configure(state="normal")
+        self.operation_log_box.delete("1.0", "end")
+        self.operation_log_box.insert("1.0", "\n".join(lines) if lines else "No operations yet.")
+        self.operation_log_box.configure(state="disabled")
     
     def _create_previews(self):
         self.previews = {
@@ -3341,6 +3591,7 @@ class App(ctk.CTk):
             if self.current_cat in self.previews:
                 self.previews[self.current_cat].state = self.preview_state
                 self.previews[self.current_cat].update()
+        self._refresh_operation_log()
     
     def _on_change(self, key, value):
         if key and hasattr(self.preview_state, key):
@@ -3348,6 +3599,7 @@ class App(ctk.CTk):
             if self.current_cat in self.previews:
                 self.previews[self.current_cat].state = self.preview_state
                 self.previews[self.current_cat].update()
+        self._refresh_operation_log()
     
     # ================================================================
     # SEARCH
@@ -3643,6 +3895,7 @@ class App(ctk.CTk):
             f'Applied {count} settings from "{name}".\n\nTargeted shell refresh was sent. Restart Explorer remains available if Windows does not repaint every view.',
         )
         self._show_category(self.current_cat)
+        self._refresh_operation_log()
 
     def _save_preset_dialog(self):
         dialog = ctk.CTkInputDialog(text="Enter a name for this preset:", title="Save Preset")
@@ -3664,13 +3917,16 @@ class App(ctk.CTk):
         if messagebox.askyesno("Remove Send To Entry", f'Remove "{name}" from Send To?'):
             if remove_sendto_entry(path):
                 self._show_category("Tools")  # Refresh
+                self._refresh_operation_log()
             else:
+                self._refresh_operation_log()
                 messagebox.showerror("Error", "Could not remove the entry.")
 
     def _wipe_recent(self):
         if not messagebox.askyesno("Wipe Recent Items", "This will clear:\n- Recent files\n- Jump Lists\n- AutomaticDestinations\n- CustomDestinations\n\nContinue?"):
             return
         results = wipe_recent_items()
+        self._refresh_operation_log()
         messagebox.showinfo("Done", f"Deleted {results['deleted']} file(s).\nErrors: {results['errors']}")
 
     def _show_presets(self):
@@ -3711,8 +3967,11 @@ class App(ctk.CTk):
             try:
                 metadata = create_backup_bundle(path)
                 count = len(metadata.get("registry_exports", []))
+                self._refresh_operation_log()
                 messagebox.showinfo("Backup", f"Backup bundle saved:\n{path}\n\nRegistry exports: {count}")
             except Exception as exc:
+                log_operation("backup", "error", str(exc), path=path)
+                self._refresh_operation_log()
                 messagebox.showerror("Backup", str(exc))
 
     def _restore_bundle(self):
@@ -3725,7 +3984,10 @@ class App(ctk.CTk):
                     "Restore",
                     f"Restore complete.\n\nRegistry files: {results['registry_imported']}\nFiles restored: {results['files_restored']}\nErrors: {results['errors']}",
                 )
+                self._refresh_operation_log()
             except Exception as exc:
+                log_operation("restore", "error", str(exc), path=path)
+                self._refresh_operation_log()
                 messagebox.showerror("Restore", str(exc))
 
     def _toggle_context_menu(self):
@@ -3733,7 +3995,9 @@ class App(ctk.CTk):
         if set_context_menu_integration(enable):
             messagebox.showinfo("Shell Menu", "ExplorerTweaks shell menu installed." if enable else "ExplorerTweaks shell menu removed.")
             self._show_category("Tools")
+            self._refresh_operation_log()
         else:
+            self._refresh_operation_log()
             messagebox.showerror("Shell Menu", "Could not update ExplorerTweaks shell menu.")
 
     def _toggle_darkmode_auto_switch(self):
@@ -3745,7 +4009,10 @@ class App(ctk.CTk):
                 path = install_darkmode_auto_switch()
                 messagebox.showinfo("Auto Dark Mode", f"ExplorerTweaks auto dark-mode task installed.\n\nScript:\n{path}")
             self._show_category("Tools")
+            self._refresh_operation_log()
         except Exception as exc:
+            log_operation("darkmode_auto_switch", "error", str(exc))
+            self._refresh_operation_log()
             messagebox.showerror("Auto Dark Mode", str(exc))
 
     def _refresh_shell(self):
@@ -3758,6 +4025,7 @@ class App(ctk.CTk):
                 "Refresh Shell",
                 "\n".join(report.errors) + "\n\nRestart Explorer remains available as an explicit fallback.",
             )
+        self._refresh_operation_log()
 
     def _restart(self):
         if messagebox.askyesno("Restart Explorer", "Force restart Explorer as a fallback?"):
@@ -3765,6 +4033,7 @@ class App(ctk.CTk):
                 messagebox.showinfo("Restart Explorer", "Explorer restarted.")
             else:
                 messagebox.showerror("Restart Explorer", "Could not restart Explorer. Check the console output for details.")
+            self._refresh_operation_log()
 
     def _export(self):
         from tkinter import filedialog
@@ -3784,6 +4053,7 @@ class App(ctk.CTk):
             self._load_preview_state()
             for p in self.previews.values(): p.state = self.preview_state
             self._show_category(self.current_cat)
+            self._refresh_operation_log()
             messagebox.showinfo("Import", f"Applied {count} setting(s).")
 
 
@@ -3892,6 +4162,7 @@ def main():
     parser.add_argument("--darkmode-lon", type=float, help="Longitude override for dark-mode auto-switch")
     parser.add_argument("--focus", help="Open the GUI focused on a category or setting id")
     parser.add_argument("--dry-run", action="store_true", help="Print operations without writing to registry")
+    parser.add_argument("--dry-run-report", metavar="FILE", help="Write a structured JSON operation report")
     parser.add_argument("--list-presets", action="store_true", help="List available built-in presets")
     parser.add_argument("--wipe-recent", action="store_true", help="Clear recent files, Jump Lists, and destinations")
 
@@ -3899,7 +4170,11 @@ def main():
     if len(sys.argv) > 1:
         args = parser.parse_args()
         global DRY_RUN
+        clear_operation_log()
         DRY_RUN = args.dry_run
+        if args.dry_run_report:
+            log_operation("cli", "started", "CLI command started.", arguments=vars(args))
+            atexit.register(write_operation_report, args.dry_run_report)
 
         if args.list_presets:
             cli_list_presets()
