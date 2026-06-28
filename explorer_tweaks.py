@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ExplorerTweaks v2.4.0 - Windows File Explorer Configuration Utility
+ExplorerTweaks v2.4.1 - Windows File Explorer Configuration Utility
 Pixel-accurate Windows 11 File Explorer and Taskbar simulation.
 
 Author: SysAdminDoc
@@ -29,7 +29,7 @@ from enum import Enum
 from pathlib import Path
 
 APP_NAME = "ExplorerTweaks"
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.4.1"
 DARKMODE_TASK_NAME = r"\ExplorerTweaks\DarkModeAutoSwitch"
 DARKMODE_SCRIPT_NAME = "darkmode_auto_switch.ps1"
 
@@ -743,6 +743,17 @@ EXTRA_BACKUP_REGISTRY_PATHS = [
     r"Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}",
     r"Control Panel\Desktop",
 ]
+BACKUP_MANIFEST_FILE = "manifest.json"
+BACKUP_ALLOWED_DIRS = {"registry", "wallpaper", "taskbar_pins"}
+REGISTRY_HIVE_ALIASES = {
+    "HKEY_CURRENT_USER": "HKCU",
+    "HKEY_LOCAL_MACHINE": "HKLM",
+    "HKEY_USERS": "HKU",
+}
+
+
+class BackupBundleValidationError(ValueError):
+    """Raised when a backup bundle is unsafe or does not match the expected schema."""
 
 
 def backup_registry_paths(settings: List[RegistrySetting]) -> List[str]:
@@ -753,6 +764,203 @@ def backup_registry_paths(settings: List[RegistrySetting]) -> List[str]:
 
 def safe_backup_name(path: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", path).strip("_") or "root"
+
+
+def normalize_backup_member_name(name: str) -> str:
+    normalized = name.replace("\\", "/").strip()
+    if not normalized:
+        raise BackupBundleValidationError("Backup archive contains an empty member name.")
+    if normalized.startswith("/") or re.match(r"^[A-Za-z]:", normalized):
+        raise BackupBundleValidationError(f"Backup archive contains an absolute path: {name}")
+    parts = normalized.rstrip("/").split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        raise BackupBundleValidationError(f"Backup archive contains an unsafe relative path: {name}")
+    return "/".join(parts)
+
+
+def allowed_backup_registry_keys() -> List[str]:
+    return [f"HKCU\\{path}" for path in backup_registry_paths(get_all_settings())]
+
+
+def normalize_registry_key(key: str) -> str:
+    normalized = key.strip().replace("/", "\\")
+    for long_name, short_name in REGISTRY_HIVE_ALIASES.items():
+        if normalized.casefold() == long_name.casefold():
+            return short_name
+        prefix = long_name + "\\"
+        if normalized.casefold().startswith(prefix.casefold()):
+            return short_name + normalized[len(long_name):]
+    return normalized
+
+
+def is_allowed_backup_registry_key(key: str, allowed_keys: List[str]) -> bool:
+    normalized = normalize_registry_key(key).casefold()
+    for allowed in allowed_keys:
+        allowed_normalized = allowed.casefold()
+        if normalized == allowed_normalized or normalized.startswith(allowed_normalized + "\\"):
+            return True
+    return False
+
+
+def decode_reg_file(raw: bytes) -> str:
+    for encoding in ("utf-16", "utf-8-sig", "utf-8", "latin-1"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise BackupBundleValidationError("Registry export could not be decoded.")
+
+
+def validate_reg_file_content(raw: bytes, allowed_keys: List[str], member_name: str) -> None:
+    text = decode_reg_file(raw)
+    headers = re.findall(r"^\s*\[-?([^\]]+)\]", text, flags=re.MULTILINE)
+    if not headers:
+        raise BackupBundleValidationError(f"Registry export has no registry key headers: {member_name}")
+    for key in headers:
+        if not is_allowed_backup_registry_key(key, allowed_keys):
+            raise BackupBundleValidationError(f"Registry export contains a non-whitelisted key: {key}")
+
+
+def validate_manifest_file_path(value: Any, required_prefix: str, required_suffix: Optional[str] = None) -> str:
+    if not isinstance(value, str):
+        raise BackupBundleValidationError("Backup manifest contains a non-string file path.")
+    normalized = normalize_backup_member_name(value)
+    if not normalized.startswith(required_prefix + "/"):
+        raise BackupBundleValidationError(f"Backup manifest file path is not under {required_prefix}: {value}")
+    leaf = normalized.split("/")[-1]
+    if not leaf:
+        raise BackupBundleValidationError(f"Backup manifest file path has no filename: {value}")
+    if required_suffix and not leaf.lower().endswith(required_suffix):
+        raise BackupBundleValidationError(f"Backup manifest file path has the wrong extension: {value}")
+    if "/" in normalized[len(required_prefix) + 1:]:
+        raise BackupBundleValidationError(f"Backup manifest file path is nested too deeply: {value}")
+    return normalized
+
+
+def expected_taskbar_pins_suffix() -> str:
+    return r"\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar".casefold()
+
+
+def validate_backup_manifest(metadata: Any, zip_files: Dict[str, zipfile.ZipInfo], zf: zipfile.ZipFile) -> Tuple[Dict[str, Any], set]:
+    if not isinstance(metadata, dict):
+        raise BackupBundleValidationError("Backup manifest must be a JSON object.")
+    if metadata.get("app") != APP_NAME:
+        raise BackupBundleValidationError("Backup manifest was not created by ExplorerTweaks.")
+    if not isinstance(metadata.get("version"), str) or not metadata["version"]:
+        raise BackupBundleValidationError("Backup manifest is missing a version string.")
+
+    allowed_files = {BACKUP_MANIFEST_FILE}
+    allowed_registry_keys = allowed_backup_registry_keys()
+    registry_exports = metadata.get("registry_exports", [])
+    if not isinstance(registry_exports, list):
+        raise BackupBundleValidationError("Backup manifest registry_exports must be a list.")
+
+    seen_export_files = set()
+    for export in registry_exports:
+        if not isinstance(export, dict):
+            raise BackupBundleValidationError("Backup manifest registry export must be an object.")
+        key = export.get("key")
+        if not isinstance(key, str) or not is_allowed_backup_registry_key(key, allowed_registry_keys):
+            raise BackupBundleValidationError(f"Backup manifest references a non-whitelisted registry key: {key}")
+        export_file = validate_manifest_file_path(export.get("file"), "registry", ".reg")
+        if export_file in seen_export_files:
+            raise BackupBundleValidationError(f"Backup manifest references a duplicate registry file: {export_file}")
+        if export_file not in zip_files:
+            raise BackupBundleValidationError(f"Backup manifest references a missing registry file: {export_file}")
+        validate_reg_file_content(zf.read(zip_files[export_file]), allowed_registry_keys, export_file)
+        seen_export_files.add(export_file)
+        allowed_files.add(export_file)
+
+    missing_registry_paths = metadata.get("missing_registry_paths", [])
+    if missing_registry_paths is not None:
+        if not isinstance(missing_registry_paths, list) or not all(isinstance(item, str) for item in missing_registry_paths):
+            raise BackupBundleValidationError("Backup manifest missing_registry_paths must be a list of strings.")
+
+    wallpaper = metadata.get("wallpaper")
+    if wallpaper is not None:
+        if not isinstance(wallpaper, dict):
+            raise BackupBundleValidationError("Backup manifest wallpaper entry must be an object.")
+        wallpaper_file = validate_manifest_file_path(wallpaper.get("file"), "wallpaper")
+        original_path = wallpaper.get("original_path")
+        if not isinstance(original_path, str) or not re.match(r"^[A-Za-z]:\\", original_path):
+            raise BackupBundleValidationError("Backup manifest wallpaper original_path must be an absolute Windows path.")
+        if Path(original_path).name != Path(wallpaper_file).name:
+            raise BackupBundleValidationError("Backup manifest wallpaper filename does not match original_path.")
+        if wallpaper_file not in zip_files:
+            raise BackupBundleValidationError(f"Backup manifest references a missing wallpaper file: {wallpaper_file}")
+        allowed_files.add(wallpaper_file)
+
+    pins = metadata.get("taskbar_pins")
+    if pins is not None:
+        if not isinstance(pins, dict):
+            raise BackupBundleValidationError("Backup manifest taskbar_pins entry must be an object.")
+        folder = pins.get("folder")
+        if folder != "taskbar_pins":
+            raise BackupBundleValidationError("Backup manifest taskbar_pins folder must be taskbar_pins.")
+        original_path = pins.get("original_path")
+        if not isinstance(original_path, str) or not original_path.replace("/", "\\").casefold().endswith(expected_taskbar_pins_suffix()):
+            raise BackupBundleValidationError("Backup manifest taskbar_pins original_path is not a TaskBar pins folder.")
+        for member_name in zip_files:
+            if member_name.startswith("taskbar_pins/"):
+                if "/" in member_name[len("taskbar_pins/"):]:
+                    raise BackupBundleValidationError(f"Backup taskbar pin file is nested too deeply: {member_name}")
+                allowed_files.add(member_name)
+
+    for member_name in zip_files:
+        if member_name not in allowed_files:
+            raise BackupBundleValidationError(f"Backup archive contains an unexpected payload entry: {member_name}")
+
+    return metadata, allowed_files
+
+
+def validate_backup_zip(zf: zipfile.ZipFile) -> Tuple[Dict[str, Any], set]:
+    zip_files: Dict[str, zipfile.ZipInfo] = {}
+    directory_names = set()
+    manifest_count = 0
+
+    for info in zf.infolist():
+        normalized = normalize_backup_member_name(info.filename)
+        if info.is_dir():
+            if normalized not in BACKUP_ALLOWED_DIRS:
+                raise BackupBundleValidationError(f"Backup archive contains an unexpected directory: {info.filename}")
+            directory_names.add(normalized)
+            continue
+        if normalized in zip_files:
+            raise BackupBundleValidationError(f"Backup archive contains a duplicate file: {normalized}")
+        zip_files[normalized] = info
+        if normalized == BACKUP_MANIFEST_FILE:
+            manifest_count += 1
+
+    if manifest_count != 1:
+        raise BackupBundleValidationError("Backup archive must contain exactly one manifest.json file.")
+
+    try:
+        metadata = json.loads(zf.read(zip_files[BACKUP_MANIFEST_FILE]).decode("utf-8-sig"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise BackupBundleValidationError(f"Backup manifest is not valid JSON: {exc}") from exc
+
+    return validate_backup_manifest(metadata, zip_files, zf)
+
+
+def validate_backup_bundle(filepath: str) -> Dict[str, Any]:
+    if not os.path.isfile(filepath):
+        raise FileNotFoundError(filepath)
+    with zipfile.ZipFile(filepath, "r") as zf:
+        metadata, _ = validate_backup_zip(zf)
+    return metadata
+
+
+def extract_validated_backup_zip(zf: zipfile.ZipFile, temp_path: Path, allowed_files: set) -> None:
+    for info in zf.infolist():
+        if info.is_dir():
+            continue
+        normalized = normalize_backup_member_name(info.filename)
+        if normalized not in allowed_files:
+            raise BackupBundleValidationError(f"Backup archive contains an unexpected payload entry: {normalized}")
+        target = temp_path / normalized
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with zf.open(info, "r") as source, open(target, "wb") as dest:
+            shutil.copyfileobj(source, dest)
 
 
 def create_backup_bundle(filepath: str) -> Dict[str, Any]:
@@ -830,15 +1038,14 @@ def restore_backup_bundle(filepath: str) -> Dict[str, int]:
 
     if DRY_RUN:
         print(f"[DRY-RUN] RESTORE backup bundle: {filepath}")
+        validate_backup_bundle(filepath)
         return results
 
     with tempfile.TemporaryDirectory(prefix="ExplorerTweaksRestore_") as temp_dir:
         temp_path = Path(temp_dir)
         with zipfile.ZipFile(filepath, "r") as zf:
-            zf.extractall(temp_path)
-
-        manifest_path = temp_path / "manifest.json"
-        metadata = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+            metadata, allowed_files = validate_backup_zip(zf)
+            extract_validated_backup_zip(zf, temp_path, allowed_files)
 
         for export in metadata.get("registry_exports", []):
             reg_file = temp_path / export.get("file", "")

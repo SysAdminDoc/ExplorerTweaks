@@ -4,15 +4,6 @@ Backlog for ExplorerTweaks. Goal: stay focused on File Explorer and closely rela
 
 ## Research-Driven Additions
 
-### P0
-
-- [ ] P0 - Harden backup restore archive validation
-  Why: Restore currently extracts ZIP members before validating paths, manifest schema, registry files, or backup provenance.
-  Evidence: `explorer_tweaks.py::restore_backup_bundle`; Python zipfile docs; OWASP Zip Slip.
-  Touches: `explorer_tweaks.py`, `tests/test_deployment_helpers.py`
-  Acceptance: Malicious `..`, absolute-path, duplicate-manifest, non-whitelisted registry, and unexpected payload entries are rejected before extraction/import; valid v2.4.0 bundles still restore.
-  Complexity: M
-
 ### P1
 
 - [ ] P1 - Add a shared plan/apply/verify/rollback engine

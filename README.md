@@ -1,6 +1,6 @@
-# ExplorerTweaks v2.4.0
+# ExplorerTweaks v2.4.1
 
-![Version](https://img.shields.io/badge/Version-2.4.0-1DB954?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.4.1-1DB954?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=for-the-badge&logo=windows)
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)
@@ -19,7 +19,7 @@ ExplorerTweaks is a Windows File Explorer and shell configuration utility with a
 - PowerShell deployment script export for current-user or all-loaded-user registry hives.
 - PSRemoting profile push for fleets that already have WinRM access configured.
 - Multi-user local apply across `HKU\.DEFAULT` and loaded user SIDs.
-- Backup/restore bundles for ExplorerTweaks registry subtrees, wallpaper, and taskbar pins.
+- Backup/restore bundles for ExplorerTweaks registry subtrees, wallpaper, and taskbar pins, with archive validation before restore.
 - Right-click shell entries that launch ExplorerTweaks focused on the relevant settings category.
 - Sunrise/sunset dark-mode auto-switch using Windows Location API or explicit latitude/longitude overrides.
 - Send To folder manager, classic context menu toggle, classic Photo Viewer registration, and `.reg` export.

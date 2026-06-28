@@ -2,6 +2,13 @@
 
 All notable changes to ExplorerTweaks will be documented in this file.
 
+## [v2.4.1] - 2026-06-28
+
+### Fixed
+- Hardened backup restore ZIP validation before extraction or registry import.
+- Rejected unsafe restore archives with parent-directory paths, absolute paths, duplicate manifests, non-whitelisted registry keys, and unexpected payload files.
+- Added restore-bundle validation coverage for malicious archives and valid v2.4.0-compatible bundles.
+
 ## [v2.4.0] - 2026-06-27
 
 ### Added
