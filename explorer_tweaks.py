@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
-ExplorerTweaks v2.4.1 - Windows File Explorer Configuration Utility
+ExplorerTweaks v2.5.0 - Windows File Explorer Configuration Utility
 Pixel-accurate Windows 11 File Explorer and Taskbar simulation.
 
 Author: SysAdminDoc
 License: MIT
 """
+
+import multiprocessing
+multiprocessing.freeze_support()
 
 import customtkinter as ctk
 from tkinter import messagebox
@@ -29,7 +32,7 @@ from enum import Enum
 from pathlib import Path
 
 APP_NAME = "ExplorerTweaks"
-APP_VERSION = "2.4.1"
+APP_VERSION = "2.5.0"
 DARKMODE_TASK_NAME = r"\ExplorerTweaks\DarkModeAutoSwitch"
 DARKMODE_SCRIPT_NAME = "darkmode_auto_switch.ps1"
 
@@ -195,19 +198,383 @@ def get_registry_value(path: str, name: str, hive: int = winreg.HKEY_CURRENT_USE
         return value
     except: return None
 
-def set_registry_value(path: str, name: str, value: Any, reg_type: str, hive: int = winreg.HKEY_CURRENT_USER) -> bool:
-    hive_name = {winreg.HKEY_CURRENT_USER: "HKCU", winreg.HKEY_LOCAL_MACHINE: "HKLM"}.get(hive, "HKEY")
-    if DRY_RUN:
-        type_str = reg_type.upper()
-        print(f"[DRY-RUN] SET {hive_name}\\{path}\\{name} = {value} ({type_str})")
-        return True
+
+@dataclass
+class RegistryValueSnapshot:
+    exists: bool
+    value: Any = None
+    reg_type: Optional[int] = None
+
+
+@dataclass
+class RegistryValueRecord:
+    path: str
+    name: str
+    value: Any
+    reg_type: int
+
+
+@dataclass
+class RegistryTreeSnapshot:
+    exists: bool
+    keys: List[str] = field(default_factory=list)
+    values: List[RegistryValueRecord] = field(default_factory=list)
+
+
+@dataclass
+class RegistryOperation:
+    action: str
+    hive: int
+    path: str
+    name: str = ""
+    value: Any = None
+    reg_type: Any = "DWORD"
+    label: str = ""
+
+
+@dataclass
+class RegistryOperationResult:
+    operation: RegistryOperation
+    snapshot: Any
+    applied: bool = False
+    verified: bool = False
+    error: Optional[str] = None
+
+
+@dataclass
+class RegistryPlanReport:
+    label: str
+    dry_run: bool
+    operations: List[RegistryOperation]
+    results: List[RegistryOperationResult] = field(default_factory=list)
+    errors: List[str] = field(default_factory=list)
+    rollback_errors: List[str] = field(default_factory=list)
+    rolled_back: int = 0
+
+    @property
+    def success(self) -> bool:
+        return not self.errors and not self.rollback_errors
+
+    @property
+    def planned(self) -> int:
+        return len(self.operations)
+
+    @property
+    def applied(self) -> int:
+        return sum(1 for result in self.results if result.applied)
+
+    @property
+    def verified(self) -> int:
+        return sum(1 for result in self.results if result.verified)
+
+
+class RegistryOperationError(RuntimeError):
+    """Raised when a registry operation cannot be applied, verified, or rolled back."""
+
+
+HIVE_DISPLAY_NAMES = {
+    winreg.HKEY_CURRENT_USER: "HKCU",
+    winreg.HKEY_LOCAL_MACHINE: "HKLM",
+    winreg.HKEY_USERS: "HKU",
+}
+
+REGISTRY_TYPE_NAMES = {
+    winreg.REG_DWORD: "DWORD",
+    winreg.REG_SZ: "String",
+    winreg.REG_EXPAND_SZ: "ExpandString",
+    winreg.REG_BINARY: "Binary",
+    winreg.REG_MULTI_SZ: "MultiString",
+    winreg.REG_QWORD: "QWORD",
+}
+
+LAST_REGISTRY_PLAN_REPORTS: List[RegistryPlanReport] = []
+
+
+def registry_type_code(reg_type: Any) -> int:
+    if isinstance(reg_type, int):
+        return reg_type
+    normalized = str(reg_type).replace("REG_", "").replace("-", "").replace("_", "").upper()
+    type_map = {
+        "DWORD": winreg.REG_DWORD,
+        "STRING": winreg.REG_SZ,
+        "SZ": winreg.REG_SZ,
+        "EXPANDSTRING": winreg.REG_EXPAND_SZ,
+        "EXPANDSZ": winreg.REG_EXPAND_SZ,
+        "BINARY": winreg.REG_BINARY,
+    }
+    if normalized not in type_map:
+        raise RegistryOperationError(f"Unsupported registry value type: {reg_type}")
+    return type_map[normalized]
+
+
+def registry_type_name(reg_type: Any) -> str:
     try:
-        type_map = {"DWORD": winreg.REG_DWORD, "String": winreg.REG_SZ}
-        key = winreg.CreateKeyEx(hive, path, 0, winreg.KEY_WRITE)
-        winreg.SetValueEx(key, name, 0, type_map.get(reg_type, winreg.REG_DWORD), value)
+        return REGISTRY_TYPE_NAMES.get(registry_type_code(reg_type), str(reg_type))
+    except RegistryOperationError:
+        return str(reg_type)
+
+
+def hive_display_name(hive: int) -> str:
+    return HIVE_DISPLAY_NAMES.get(hive, f"HIVE_{hive}")
+
+
+def registry_value_target(hive: int, path: str, name: str = "") -> str:
+    leaf = "(Default)" if name == "" else name
+    return f"{hive_display_name(hive)}\\{path}\\{leaf}"
+
+
+def registry_operation_target(operation: RegistryOperation) -> str:
+    if operation.action == "delete_tree":
+        return f"{hive_display_name(operation.hive)}\\{operation.path}"
+    return registry_value_target(operation.hive, operation.path, operation.name)
+
+
+def registry_set_operation(path: str, name: str, value: Any, reg_type: Any, hive: int = winreg.HKEY_CURRENT_USER, label: str = "") -> RegistryOperation:
+    return RegistryOperation("set_value", hive, path, name, value, reg_type, label)
+
+
+def registry_delete_value_operation(path: str, name: str, hive: int = winreg.HKEY_CURRENT_USER, label: str = "") -> RegistryOperation:
+    return RegistryOperation("delete_value", hive, path, name, None, "DWORD", label)
+
+
+def registry_delete_tree_operation(path: str, hive: int = winreg.HKEY_CURRENT_USER, label: str = "") -> RegistryOperation:
+    return RegistryOperation("delete_tree", hive, path, "", None, "DWORD", label)
+
+
+def read_registry_value_snapshot(hive: int, path: str, name: str) -> RegistryValueSnapshot:
+    try:
+        key = winreg.OpenKey(hive, path, 0, winreg.KEY_READ)
+        try:
+            value, reg_type = winreg.QueryValueEx(key, name)
+            return RegistryValueSnapshot(True, value, reg_type)
+        finally:
+            winreg.CloseKey(key)
+    except FileNotFoundError:
+        return RegistryValueSnapshot(False)
+    except OSError:
+        return RegistryValueSnapshot(False)
+
+
+def write_registry_value(hive: int, path: str, name: str, value: Any, reg_type: Any) -> None:
+    key = winreg.CreateKeyEx(hive, path, 0, winreg.KEY_WRITE)
+    try:
+        winreg.SetValueEx(key, name, 0, registry_type_code(reg_type), value)
+    finally:
         winreg.CloseKey(key)
-        return True
-    except: return False
+
+
+def delete_registry_value(hive: int, path: str, name: str) -> None:
+    try:
+        key = winreg.OpenKey(hive, path, 0, winreg.KEY_SET_VALUE)
+    except OSError:
+        return
+    try:
+        try:
+            winreg.DeleteValue(key, name)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
+    finally:
+        winreg.CloseKey(key)
+
+
+def capture_registry_tree_snapshot(hive: int, path: str) -> RegistryTreeSnapshot:
+    snapshot = RegistryTreeSnapshot(False)
+
+    def walk(current_path: str) -> None:
+        key = winreg.OpenKey(hive, current_path, 0, winreg.KEY_READ)
+        snapshot.keys.append(current_path)
+        try:
+            index = 0
+            while True:
+                try:
+                    name, value, reg_type = winreg.EnumValue(key, index)
+                except OSError:
+                    break
+                snapshot.values.append(RegistryValueRecord(current_path, name, value, reg_type))
+                index += 1
+
+            index = 0
+            while True:
+                try:
+                    child = winreg.EnumKey(key, index)
+                except OSError:
+                    break
+                walk(current_path + "\\" + child)
+                index += 1
+        finally:
+            winreg.CloseKey(key)
+
+    try:
+        walk(path)
+        snapshot.exists = True
+    except OSError:
+        snapshot.exists = False
+    return snapshot
+
+
+def restore_registry_tree_snapshot(hive: int, snapshot: RegistryTreeSnapshot) -> None:
+    if not snapshot.exists:
+        return
+    for key_path in sorted(snapshot.keys, key=lambda item: item.count("\\")):
+        key = winreg.CreateKeyEx(hive, key_path, 0, winreg.KEY_WRITE)
+        winreg.CloseKey(key)
+    for record in snapshot.values:
+        write_registry_value(hive, record.path, record.name, record.value, record.reg_type)
+
+
+def capture_registry_operation_snapshot(operation: RegistryOperation) -> Any:
+    if operation.action in ("set_value", "delete_value"):
+        return read_registry_value_snapshot(operation.hive, operation.path, operation.name)
+    if operation.action == "delete_tree":
+        return capture_registry_tree_snapshot(operation.hive, operation.path)
+    raise RegistryOperationError(f"Unsupported registry operation: {operation.action}")
+
+
+def registry_values_equal(actual: Any, expected: Any, reg_type: Any) -> bool:
+    kind = registry_type_code(reg_type)
+    if kind in (winreg.REG_DWORD, winreg.REG_QWORD):
+        return int(actual) == int(expected)
+    if kind == winreg.REG_BINARY:
+        return bytes(actual) == bytes(expected)
+    if kind == winreg.REG_MULTI_SZ:
+        return list(actual) == list(expected)
+    return str(actual) == str(expected)
+
+
+def apply_registry_operation(operation: RegistryOperation) -> None:
+    if operation.action == "set_value":
+        write_registry_value(operation.hive, operation.path, operation.name, operation.value, operation.reg_type)
+        return
+    if operation.action == "delete_value":
+        delete_registry_value(operation.hive, operation.path, operation.name)
+        return
+    if operation.action == "delete_tree":
+        delete_registry_tree(operation.hive, operation.path)
+        return
+    raise RegistryOperationError(f"Unsupported registry operation: {operation.action}")
+
+
+def verify_registry_operation(operation: RegistryOperation) -> bool:
+    if operation.action == "set_value":
+        snapshot = read_registry_value_snapshot(operation.hive, operation.path, operation.name)
+        return (
+            snapshot.exists
+            and snapshot.reg_type == registry_type_code(operation.reg_type)
+            and registry_values_equal(snapshot.value, operation.value, operation.reg_type)
+        )
+    if operation.action == "delete_value":
+        return not read_registry_value_snapshot(operation.hive, operation.path, operation.name).exists
+    if operation.action == "delete_tree":
+        return not registry_key_exists(operation.path, operation.hive)
+    raise RegistryOperationError(f"Unsupported registry operation: {operation.action}")
+
+
+def rollback_registry_operation(result: RegistryOperationResult) -> None:
+    operation = result.operation
+    snapshot = result.snapshot
+    if operation.action in ("set_value", "delete_value"):
+        if snapshot and snapshot.exists:
+            write_registry_value(operation.hive, operation.path, operation.name, snapshot.value, snapshot.reg_type)
+        else:
+            delete_registry_value(operation.hive, operation.path, operation.name)
+        return
+    if operation.action == "delete_tree":
+        delete_registry_tree(operation.hive, operation.path)
+        restore_registry_tree_snapshot(operation.hive, snapshot)
+        return
+    raise RegistryOperationError(f"Unsupported registry operation: {operation.action}")
+
+
+def summarize_registry_snapshot(snapshot: Any) -> str:
+    if isinstance(snapshot, RegistryValueSnapshot):
+        if not snapshot.exists:
+            return "missing"
+        return f"{snapshot.value!r} ({registry_type_name(snapshot.reg_type)})"
+    if isinstance(snapshot, RegistryTreeSnapshot):
+        if not snapshot.exists:
+            return "missing tree"
+        return f"{len(snapshot.keys)} key(s), {len(snapshot.values)} value(s)"
+    return "unknown"
+
+
+def format_registry_operation_error(operation: RegistryOperation, error: str) -> str:
+    action = operation.action.replace("_", " ")
+    return (
+        f"{action} failed for {registry_operation_target(operation)}: {error}. "
+        "Recovery hint: captured previous registry values were restored where possible."
+    )
+
+
+def execute_registry_plan(
+    operations: List[RegistryOperation],
+    label: str = "registry plan",
+    dry_run: Optional[bool] = None,
+    rollback_on_failure: bool = True,
+) -> RegistryPlanReport:
+    effective_dry_run = DRY_RUN if dry_run is None else dry_run
+    report = RegistryPlanReport(label, effective_dry_run, list(operations))
+
+    if not operations:
+        LAST_REGISTRY_PLAN_REPORTS.append(report)
+        return report
+
+    if effective_dry_run:
+        print(f"[DRY-RUN] PLAN {label}: {len(operations)} registry operation(s)")
+        for operation in operations:
+            try:
+                snapshot = capture_registry_operation_snapshot(operation)
+            except Exception as exc:
+                snapshot = None
+                message = format_registry_operation_error(operation, str(exc))
+                report.errors.append(message)
+            result = RegistryOperationResult(operation, snapshot)
+            report.results.append(result)
+            value_suffix = ""
+            if operation.action == "set_value":
+                value_suffix = f" = {operation.value!r} ({registry_type_name(operation.reg_type)})"
+            print(f"[DRY-RUN]   {operation.action.upper()} {registry_operation_target(operation)}{value_suffix}")
+            print(f"[DRY-RUN]     previous: {summarize_registry_snapshot(snapshot)}")
+        LAST_REGISTRY_PLAN_REPORTS.append(report)
+        return report
+
+    for operation in operations:
+        try:
+            snapshot = capture_registry_operation_snapshot(operation)
+            result = RegistryOperationResult(operation, snapshot)
+            apply_registry_operation(operation)
+            result.applied = True
+            if not verify_registry_operation(operation):
+                raise RegistryOperationError("post-write verification did not observe the requested state")
+            result.verified = True
+            report.results.append(result)
+        except Exception as exc:
+            if "result" not in locals() or result.operation is not operation:
+                result = RegistryOperationResult(operation, None)
+            if not any(item is result for item in report.results):
+                report.results.append(result)
+            result.error = str(exc)
+            report.errors.append(format_registry_operation_error(operation, str(exc)))
+            if rollback_on_failure:
+                for applied_result in reversed([item for item in report.results if item.applied]):
+                    try:
+                        rollback_registry_operation(applied_result)
+                        report.rolled_back += 1
+                    except Exception as rollback_exc:
+                        report.rollback_errors.append(
+                            f"rollback failed for {registry_operation_target(applied_result.operation)}: {rollback_exc}"
+                        )
+            LAST_REGISTRY_PLAN_REPORTS.append(report)
+            return report
+
+    LAST_REGISTRY_PLAN_REPORTS.append(report)
+    return report
+
+
+def set_registry_value(path: str, name: str, value: Any, reg_type: str, hive: int = winreg.HKEY_CURRENT_USER) -> bool:
+    report = execute_registry_plan([registry_set_operation(path, name, value, reg_type, hive)], label="set registry value")
+    return report.success
 
 def registry_key_exists(path: str, hive: int = winreg.HKEY_CURRENT_USER) -> bool:
     try:
@@ -539,42 +906,29 @@ def get_loaded_user_roots() -> List[str]:
 def set_user_registry_value(user_root: Optional[str], path: str, name: str, value: Any, reg_type: str) -> bool:
     if user_root is None:
         return set_registry_value(path, name, value, reg_type)
-    if DRY_RUN:
-        print(f"[DRY-RUN] SET HKU\\{user_root}\\{path}\\{name} = {value} ({reg_type.upper()})")
-        return True
     return set_registry_value(f"{user_root}\\{path}", name, value, reg_type, winreg.HKEY_USERS)
 
 
-def set_classic_context_menu_for_user(enable: bool, user_root: Optional[str] = None) -> bool:
+def classic_context_menu_operations(enable: bool, hive: int = winreg.HKEY_CURRENT_USER, user_root: Optional[str] = None) -> List[RegistryOperation]:
     path = r"Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32"
     parent = r"Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}"
+    if user_root:
+        path = f"{user_root}\\{path}"
+        parent = f"{user_root}\\{parent}"
+    if enable:
+        return [registry_set_operation(path, "", "", "String", hive, "classic context menu")]
+    return [registry_delete_tree_operation(parent, hive, "classic context menu")]
+
+
+def set_classic_context_menu_for_user(enable: bool, user_root: Optional[str] = None) -> bool:
     if user_root is None:
         return SpecialSettings.set_classic_context_menu(enable)
 
-    full_path = f"{user_root}\\{path}"
-    full_parent = f"{user_root}\\{parent}"
-    if DRY_RUN:
-        action = "CREATE" if enable else "DELETE"
-        print(f"[DRY-RUN] {action} HKU\\{full_parent}")
-        return True
-
-    try:
-        if enable:
-            key = winreg.CreateKeyEx(winreg.HKEY_USERS, full_path, 0, winreg.KEY_WRITE)
-            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "")
-            winreg.CloseKey(key)
-        else:
-            try:
-                winreg.DeleteKey(winreg.HKEY_USERS, full_path)
-            except OSError:
-                pass
-            try:
-                winreg.DeleteKey(winreg.HKEY_USERS, full_parent)
-            except OSError:
-                pass
-        return True
-    except OSError:
-        return False
+    report = execute_registry_plan(
+        classic_context_menu_operations(enable, winreg.HKEY_USERS, user_root),
+        label=f"classic context menu HKU\\{user_root}",
+    )
+    return report.success
 
 
 def apply_profile_values(profile_settings: dict, all_settings: List[RegistrySetting], os_version: OSVersion, multi_user: bool = False) -> int:
@@ -584,19 +938,23 @@ def apply_profile_values(profile_settings: dict, all_settings: List[RegistrySett
 
     for user_root in user_roots:
         target_label = "HKCU" if user_root is None else f"HKU\\{user_root}"
+        hive = winreg.HKEY_CURRENT_USER if user_root is None else winreg.HKEY_USERS
         if multi_user:
             print(f"Target: {target_label}")
+
+        operations: List[RegistryOperation] = []
 
         for setting_id, target_value in profile_settings.items():
             if setting_id in ("classic_context_menu", "_classic"):
                 print(f"  Classic context menu: {target_value}")
-                if set_classic_context_menu_for_user(bool(target_value), user_root):
-                    applied += 1
+                operations.extend(classic_context_menu_operations(bool(target_value), hive, user_root))
                 continue
             if setting_id in ("search_mode", "_search"):
                 print(f"  Search mode: {target_value}")
-                if set_user_registry_value(user_root, r"Software\Microsoft\Windows\CurrentVersion\Search", "SearchboxTaskbarMode", int(target_value), "DWORD"):
-                    applied += 1
+                path = r"Software\Microsoft\Windows\CurrentVersion\Search"
+                if user_root:
+                    path = f"{user_root}\\{path}"
+                operations.append(registry_set_operation(path, "SearchboxTaskbarMode", int(target_value), "DWORD", hive, "search mode"))
                 continue
 
             setting = settings_map.get(setting_id)
@@ -610,8 +968,15 @@ def apply_profile_values(profile_settings: dict, all_settings: List[RegistrySett
             locked = is_policy_locked(setting.reg_path, setting.reg_name)
             lock_str = " [GP-LOCKED]" if locked else ""
             print(f"  {setting.name}: {target_value}{lock_str}")
-            if set_user_registry_value(user_root, setting.reg_path, setting.reg_name, reg_value, setting.reg_type):
-                applied += 1
+            path = setting.reg_path if user_root is None else f"{user_root}\\{setting.reg_path}"
+            operations.append(registry_set_operation(path, setting.reg_name, reg_value, setting.reg_type, hive, setting.name))
+
+        report = execute_registry_plan(operations, label=f"apply profile to {target_label}")
+        if report.success:
+            applied += report.planned if report.dry_run else report.verified
+        else:
+            for error in report.errors + report.rollback_errors:
+                print(f"  Error: {error}")
 
     return applied
 
@@ -703,35 +1068,20 @@ def is_photo_viewer_registered() -> bool:
 
 def set_photo_viewer(enable: bool) -> bool:
     """Register or unregister Windows Photo Viewer for common image types."""
-    if DRY_RUN:
-        action = "REGISTER" if enable else "UNREGISTER"
-        print(f"[DRY-RUN] {action} Windows Photo Viewer for: {', '.join(PHOTO_VIEWER_EXTENSIONS)}")
-        return True
-
     progid = "PhotoViewer.FileAssoc.Tiff"
+    operations: List[RegistryOperation] = []
 
     if enable:
         for ext in PHOTO_VIEWER_EXTENSIONS:
-            try:
-                path = rf"Software\Classes\{ext}\OpenWithProgids"
-                key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_WRITE)
-                winreg.SetValueEx(key, progid, 0, winreg.REG_BINARY, b"")
-                winreg.CloseKey(key)
-            except:
-                return False
+            path = rf"Software\Classes\{ext}\OpenWithProgids"
+            operations.append(registry_set_operation(path, progid, b"", "Binary", label="Windows Photo Viewer"))
     else:
         for ext in PHOTO_VIEWER_EXTENSIONS:
-            try:
-                path = rf"Software\Classes\{ext}\OpenWithProgids"
-                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_WRITE)
-                try:
-                    winreg.DeleteValue(key, progid)
-                except:
-                    pass
-                winreg.CloseKey(key)
-            except:
-                pass
-    return True
+            path = rf"Software\Classes\{ext}\OpenWithProgids"
+            operations.append(registry_delete_value_operation(path, progid, label="Windows Photo Viewer"))
+
+    report = execute_registry_plan(operations, label="Windows Photo Viewer association")
+    return report.success
 
 
 # ============================================================================
@@ -749,6 +1099,11 @@ REGISTRY_HIVE_ALIASES = {
     "HKEY_CURRENT_USER": "HKCU",
     "HKEY_LOCAL_MACHINE": "HKLM",
     "HKEY_USERS": "HKU",
+}
+REGISTRY_HIVE_VALUES = {
+    "HKCU": winreg.HKEY_CURRENT_USER,
+    "HKLM": winreg.HKEY_LOCAL_MACHINE,
+    "HKU": winreg.HKEY_USERS,
 }
 
 
@@ -819,6 +1174,147 @@ def validate_reg_file_content(raw: bytes, allowed_keys: List[str], member_name: 
     for key in headers:
         if not is_allowed_backup_registry_key(key, allowed_keys):
             raise BackupBundleValidationError(f"Registry export contains a non-whitelisted key: {key}")
+
+
+def reg_logical_lines(text: str) -> List[str]:
+    lines = []
+    pending = ""
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if not stripped:
+            if pending:
+                continue
+            lines.append("")
+            continue
+        pending += stripped
+        if pending.endswith("\\"):
+            pending = pending[:-1]
+            continue
+        lines.append(pending)
+        pending = ""
+    if pending:
+        lines.append(pending)
+    return lines
+
+
+def unescape_reg_string(value: str) -> str:
+    chars = []
+    escaped = False
+    for char in value:
+        if escaped:
+            chars.append(char)
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        else:
+            chars.append(char)
+    if escaped:
+        chars.append("\\")
+    return "".join(chars)
+
+
+def parse_reg_hex_bytes(payload: str, member_name: str) -> bytes:
+    hex_text = re.sub(r"[^0-9A-Fa-f]", "", payload)
+    if len(hex_text) % 2:
+        raise BackupBundleValidationError(f"Registry export has malformed hex payload: {member_name}")
+    return bytes.fromhex(hex_text)
+
+
+def decode_reg_utf16_payload(payload: bytes) -> str:
+    text = payload.decode("utf-16-le", errors="replace")
+    return text.rstrip("\x00")
+
+
+def parse_reg_value_payload(payload: str, member_name: str) -> Tuple[str, Any, Any]:
+    payload = payload.strip()
+    if payload == "-":
+        return "delete_value", None, "DWORD"
+    if payload.lower().startswith("dword:"):
+        return "set_value", int(payload.split(":", 1)[1], 16), "DWORD"
+    if payload.lower().startswith("hex(b):"):
+        raw = parse_reg_hex_bytes(payload.split(":", 1)[1], member_name)
+        return "set_value", int.from_bytes(raw, "little"), winreg.REG_QWORD
+    if payload.lower().startswith("hex(2):"):
+        raw = parse_reg_hex_bytes(payload.split(":", 1)[1], member_name)
+        return "set_value", decode_reg_utf16_payload(raw), winreg.REG_EXPAND_SZ
+    if payload.lower().startswith("hex(7):"):
+        raw = parse_reg_hex_bytes(payload.split(":", 1)[1], member_name)
+        decoded = decode_reg_utf16_payload(raw)
+        return "set_value", [item for item in decoded.split("\x00") if item], winreg.REG_MULTI_SZ
+    if payload.lower().startswith("hex:"):
+        return "set_value", parse_reg_hex_bytes(payload.split(":", 1)[1], member_name), "Binary"
+    hex_match = re.match(r"^hex\(([0-9A-Fa-f]+)\):(.*)$", payload, flags=re.IGNORECASE)
+    if hex_match:
+        type_id = hex_match.group(1)
+        raw = parse_reg_hex_bytes(hex_match.group(2), member_name)
+        return "set_value", raw, int(type_id, 16)
+    if payload.lower().startswith("hex("):
+        raise BackupBundleValidationError(f"Registry export has malformed hex payload type in {member_name}: {payload[:40]}")
+    if payload.startswith('"') and payload.endswith('"'):
+        return "set_value", unescape_reg_string(payload[1:-1]), "String"
+    raise BackupBundleValidationError(f"Registry export has an unsupported value payload in {member_name}: {payload[:40]}")
+
+
+def parse_reg_value_line(line: str, member_name: str) -> Tuple[str, str, Any, Any]:
+    if line.startswith("@="):
+        name = ""
+        payload = line[2:]
+    else:
+        match = re.match(r'^"((?:\\.|[^"\\])*)"=(.+)$', line)
+        if not match:
+            raise BackupBundleValidationError(f"Registry export has malformed value line in {member_name}: {line[:80]}")
+        name = unescape_reg_string(match.group(1))
+        payload = match.group(2)
+    action, value, reg_type = parse_reg_value_payload(payload, member_name)
+    return action, name, value, reg_type
+
+
+def parse_reg_header(header: str, member_name: str) -> Tuple[str, int, str]:
+    action = "set"
+    if header.startswith("-"):
+        action = "delete_tree"
+        header = header[1:]
+    normalized = normalize_registry_key(header)
+    if "\\" not in normalized:
+        raise BackupBundleValidationError(f"Registry export header has no subkey path in {member_name}: {header}")
+    hive_alias, path = normalized.split("\\", 1)
+    hive = REGISTRY_HIVE_VALUES.get(hive_alias.upper())
+    if hive is None:
+        raise BackupBundleValidationError(f"Registry export uses an unsupported hive in {member_name}: {header}")
+    return action, hive, path
+
+
+def parse_reg_file_operations(raw: bytes, member_name: str) -> List[RegistryOperation]:
+    text = decode_reg_file(raw)
+    operations: List[RegistryOperation] = []
+    current_hive: Optional[int] = None
+    current_path: Optional[str] = None
+
+    for line in reg_logical_lines(text):
+        if not line or line.startswith(";") or line.lower().startswith("windows registry editor"):
+            continue
+        header_match = re.match(r"^\[([^\]]+)\]$", line)
+        if header_match:
+            action, hive, path = parse_reg_header(header_match.group(1), member_name)
+            if action == "delete_tree":
+                operations.append(registry_delete_tree_operation(path, hive, member_name))
+                current_hive = None
+                current_path = None
+            else:
+                current_hive = hive
+                current_path = path
+            continue
+        if current_hive is None or current_path is None:
+            raise BackupBundleValidationError(f"Registry export has a value outside a key header: {member_name}")
+        action, name, value, reg_type = parse_reg_value_line(line, member_name)
+        if action == "delete_value":
+            operations.append(registry_delete_value_operation(current_path, name, current_hive, member_name))
+        else:
+            operations.append(registry_set_operation(current_path, name, value, reg_type, current_hive, member_name))
+
+    if not operations:
+        raise BackupBundleValidationError(f"Registry export has no restorable values: {member_name}")
+    return operations
 
 
 def validate_manifest_file_path(value: Any, required_prefix: str, required_suffix: Optional[str] = None) -> str:
@@ -1038,7 +1534,12 @@ def restore_backup_bundle(filepath: str) -> Dict[str, int]:
 
     if DRY_RUN:
         print(f"[DRY-RUN] RESTORE backup bundle: {filepath}")
-        validate_backup_bundle(filepath)
+        with zipfile.ZipFile(filepath, "r") as zf:
+            metadata, _ = validate_backup_zip(zf)
+            for export in metadata.get("registry_exports", []):
+                export_file = export.get("file", "")
+                operations = parse_reg_file_operations(zf.read(export_file), export_file)
+                execute_registry_plan(operations, label=f"restore {export_file}", dry_run=True)
         return results
 
     with tempfile.TemporaryDirectory(prefix="ExplorerTweaksRestore_") as temp_dir:
@@ -1052,16 +1553,12 @@ def restore_backup_bundle(filepath: str) -> Dict[str, int]:
             if not reg_file.is_file():
                 results["errors"] += 1
                 continue
-            result = subprocess.run(
-                ["reg", "import", str(reg_file)],
-                capture_output=True,
-                text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-            if result.returncode == 0:
+            operations = parse_reg_file_operations(reg_file.read_bytes(), str(reg_file))
+            report = execute_registry_plan(operations, label=f"restore {export.get('file', '')}")
+            if report.success:
                 results["registry_imported"] += 1
             else:
-                results["errors"] += 1
+                results["errors"] += len(report.errors) or 1
 
         wallpaper = metadata.get("wallpaper")
         if wallpaper:
@@ -1155,29 +1652,27 @@ def is_context_menu_installed() -> bool:
 
 
 def set_context_menu_integration(enable: bool) -> bool:
-    if DRY_RUN:
-        action = "INSTALL" if enable else "UNINSTALL"
-        print(f"[DRY-RUN] {action} ExplorerTweaks context menu integration")
-        return True
+    operations: List[RegistryOperation] = []
+    if enable:
+        icon_path = sys.executable if getattr(sys, "frozen", False) else str(Path(__file__).resolve())
+        for target in CONTEXT_MENU_TARGETS:
+            operations.append(registry_set_operation(target["path"], "MUIVerb", target["label"], "String", label="context menu"))
+            operations.append(registry_set_operation(target["path"], "Icon", icon_path, "String", label="context menu"))
+            operations.append(
+                registry_set_operation(
+                    target["path"] + r"\command",
+                    "",
+                    app_launch_command(target["focus"]),
+                    "String",
+                    label="context menu",
+                )
+            )
+    else:
+        for target in CONTEXT_MENU_TARGETS:
+            operations.append(registry_delete_tree_operation(target["path"], label="context menu"))
 
-    try:
-        if enable:
-            icon_path = sys.executable if getattr(sys, "frozen", False) else str(Path(__file__).resolve())
-            for target in CONTEXT_MENU_TARGETS:
-                key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, target["path"], 0, winreg.KEY_WRITE)
-                winreg.SetValueEx(key, "MUIVerb", 0, winreg.REG_SZ, target["label"])
-                winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, icon_path)
-                winreg.CloseKey(key)
-
-                command_key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, target["path"] + r"\command", 0, winreg.KEY_WRITE)
-                winreg.SetValueEx(command_key, "", 0, winreg.REG_SZ, app_launch_command(target["focus"]))
-                winreg.CloseKey(command_key)
-        else:
-            for target in CONTEXT_MENU_TARGETS:
-                delete_registry_tree(winreg.HKEY_CURRENT_USER, target["path"])
-        return True
-    except OSError:
-        return False
+    report = execute_registry_plan(operations, label="ExplorerTweaks context menu integration")
+    return report.success
 
 
 # ============================================================================
@@ -1404,27 +1899,7 @@ BUILTIN_PRESETS = {
 
 def apply_preset(preset_settings: dict, all_settings: List, os_version) -> int:
     """Apply a preset's settings. Returns count of settings applied."""
-    settings_map = {s.id: s for s in all_settings}
-    applied = 0
-
-    for sid, target_val in preset_settings.items():
-        if sid == "classic_context_menu":
-            SpecialSettings.set_classic_context_menu(target_val)
-            applied += 1
-            continue
-
-        s = settings_map.get(sid)
-        if not s:
-            continue
-        if not is_setting_supported(s, os_version):
-            continue
-
-        if isinstance(target_val, bool):
-            val = s.enable_value if target_val else s.disable_value
-            set_registry_value(s.reg_path, s.reg_name, val, s.reg_type)
-            applied += 1
-
-    return applied
+    return apply_profile_values(preset_settings, all_settings, os_version)
 
 def save_preset_to_file(name: str, description: str, settings: List, filepath: str):
     """Save current settings as a user preset JSON file."""
@@ -1562,23 +2037,11 @@ class SpecialSettings:
     
     @staticmethod
     def set_classic_context_menu(enable: bool) -> bool:
-        path = r"Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32"
-        parent = r"Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}"
-        if enable:
-            try:
-                key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_WRITE)
-                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "")
-                winreg.CloseKey(key)
-                return True
-            except: return False
-        else:
-            try:
-                try: winreg.DeleteKey(winreg.HKEY_CURRENT_USER, path)
-                except: pass
-                try: winreg.DeleteKey(winreg.HKEY_CURRENT_USER, parent)
-                except: pass
-                return True
-            except: return False
+        report = execute_registry_plan(
+            classic_context_menu_operations(enable),
+            label="classic context menu",
+        )
+        return report.success
     
     @staticmethod
     def get_search_mode() -> int:
@@ -3132,14 +3595,11 @@ class App(ctk.CTk):
         path = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
         if path:
             with open(path, 'r', encoding="utf-8-sig") as f: data = json.load(f)
-            for s in self.settings:
-                if s.id in data: set_registry_value(s.reg_path, s.reg_name, data[s.id], s.reg_type)
-            if "_classic" in data: SpecialSettings.set_classic_context_menu(data["_classic"])
-            if "_search" in data: SpecialSettings.set_search_mode(data["_search"])
+            count = apply_profile_values(data.get("settings", data), self.settings, self.os_version)
             self._load_preview_state()
             for p in self.previews.values(): p.state = self.preview_state
             self._show_category(self.current_cat)
-            messagebox.showinfo("Import", "Done!")
+            messagebox.showinfo("Import", f"Applied {count} setting(s).")
 
 
 def cli_apply(profile_path: str, dry_run: bool = False, multi_user: bool = False):

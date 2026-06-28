@@ -2,6 +2,17 @@
 
 All notable changes to ExplorerTweaks will be documented in this file.
 
+## [v2.5.0] - 2026-06-28
+
+### Added
+- Added a shared registry plan/apply/verify/rollback engine for local settings writes.
+- Routed GUI imports, preset apply, CLI apply, multi-user apply, Photo Viewer registration, classic context menu, shell-menu integration, and backup restore registry values through verified registry plans.
+- Added dry-run registry plans with previous-value snapshots and per-operation recovery hints.
+
+### Fixed
+- Replaced backup restore `reg import` calls with parsed registry operations so restores can verify writes and roll back captured prior values on partial failure.
+- Added PyInstaller multiprocessing freeze guards and a runtime hook so the portable EXE starts without recursive worker relaunch risk.
+
 ## [v2.4.1] - 2026-06-28
 
 ### Fixed

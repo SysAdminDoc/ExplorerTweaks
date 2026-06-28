@@ -1,6 +1,6 @@
-# ExplorerTweaks v2.4.1
+# ExplorerTweaks v2.5.0
 
-![Version](https://img.shields.io/badge/Version-2.4.1-1DB954?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.5.0-1DB954?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=for-the-badge&logo=windows)
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)
@@ -16,6 +16,7 @@ ExplorerTweaks is a Windows File Explorer and shell configuration utility with a
 - Built-in presets for Minimal, Privacy, and Power User setups.
 - JSON profile export/import plus diff view against saved profiles or built-in presets.
 - CLI apply/export, dry-run mode, preset listing, recent-items wipe, and policy-lock warnings.
+- Shared registry plan/apply/verify/rollback engine for local GUI, CLI, preset, multi-user, and restore operations.
 - PowerShell deployment script export for current-user or all-loaded-user registry hives.
 - PSRemoting profile push for fleets that already have WinRM access configured.
 - Multi-user local apply across `HKU\.DEFAULT` and loaded user SIDs.

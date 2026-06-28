@@ -1,7 +1,6 @@
 import contextlib
 import io
 import json
-import subprocess
 import tempfile
 import unittest
 import warnings
@@ -77,6 +76,67 @@ class DeploymentHelperTests(unittest.TestCase):
         targets = et.parse_computer_targets(["pc-a, pc-b", "pc-a"], "pc-c,pc-b")
 
         self.assertEqual(targets, ["pc-a", "pc-b", "pc-c"])
+
+    def test_registry_plan_rolls_back_applied_steps_after_failed_verification(self):
+        operations = [
+            et.registry_set_operation(r"Software\ExplorerTweaks\Test", "A", 1, "DWORD"),
+            et.registry_set_operation(r"Software\ExplorerTweaks\Test", "B", 2, "DWORD"),
+        ]
+
+        with patch.object(
+            et,
+            "capture_registry_operation_snapshot",
+            side_effect=[
+                et.RegistryValueSnapshot(True, 0, et.winreg.REG_DWORD),
+                et.RegistryValueSnapshot(False),
+            ],
+        ), patch.object(et, "apply_registry_operation") as apply, patch.object(
+            et,
+            "verify_registry_operation",
+            side_effect=[True, False],
+        ), patch.object(et, "rollback_registry_operation") as rollback:
+            report = et.execute_registry_plan(operations, label="test plan", dry_run=False)
+
+        self.assertFalse(report.success)
+        self.assertEqual(apply.call_count, 2)
+        self.assertEqual(rollback.call_count, 2)
+        self.assertEqual(report.verified, 1)
+        self.assertEqual(report.rolled_back, 2)
+        self.assertIn("verification", report.errors[0])
+
+    def test_registry_plan_dry_run_reports_previous_value(self):
+        operation = et.registry_set_operation(r"Software\ExplorerTweaks\Test", "A", 1, "DWORD")
+
+        with patch.object(
+            et,
+            "capture_registry_operation_snapshot",
+            return_value=et.RegistryValueSnapshot(True, 0, et.winreg.REG_DWORD),
+        ):
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                report = et.execute_registry_plan([operation], label="dry plan", dry_run=True)
+
+        self.assertTrue(report.success)
+        self.assertEqual(report.planned, 1)
+        self.assertIn("previous: 0 (DWORD)", output.getvalue())
+
+    def test_parse_reg_file_operations_supports_common_export_values(self):
+        raw = (
+            "Windows Registry Editor Version 5.00\r\n\r\n"
+            "[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced]\r\n"
+            '"HideFileExt"=dword:00000000\r\n'
+            '"SampleString"="C:\\\\Temp"\r\n'
+            '"SampleBinary"=hex:01,02,ff\r\n'
+            "@=\"\"\r\n"
+        ).encode("utf-16")
+
+        operations = et.parse_reg_file_operations(raw, "registry/advanced.reg")
+
+        self.assertEqual(len(operations), 4)
+        self.assertEqual(operations[0].name, "HideFileExt")
+        self.assertEqual(operations[0].value, 0)
+        self.assertEqual(operations[1].value, r"C:\Temp")
+        self.assertEqual(operations[2].value, b"\x01\x02\xff")
+        self.assertEqual(operations[3].name, "")
 
     def _valid_registry_key(self):
         return r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
@@ -210,7 +270,7 @@ class DeploymentHelperTests(unittest.TestCase):
             with self.assertRaises(et.BackupBundleValidationError):
                 et.validate_backup_bundle(str(bundle))
 
-    def test_restore_accepts_valid_v24_bundle_with_mocked_reg_import(self):
+    def test_restore_accepts_valid_v24_bundle_with_registry_plan(self):
         with tempfile.TemporaryDirectory() as tmp:
             bundle = Path(tmp) / "good.zip"
             self._write_bundle(
@@ -228,15 +288,17 @@ class DeploymentHelperTests(unittest.TestCase):
                 ],
             )
 
-            with patch.object(
-                et.subprocess,
-                "run",
-                return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
-            ) as run:
+            report = et.RegistryPlanReport("restore", False, [])
+            with patch.object(et, "execute_registry_plan", return_value=report) as execute:
                 results = et.restore_backup_bundle(str(bundle))
 
             self.assertEqual(results, {"registry_imported": 1, "files_restored": 0, "errors": 0})
-            run.assert_called_once()
+            execute.assert_called_once()
+            operations = execute.call_args.args[0]
+            self.assertEqual(len(operations), 1)
+            self.assertEqual(operations[0].path, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")
+            self.assertEqual(operations[0].name, "HideFileExt")
+            self.assertEqual(operations[0].value, 0)
 
     def test_restore_dry_run_still_rejects_invalid_archive(self):
         with tempfile.TemporaryDirectory() as tmp:

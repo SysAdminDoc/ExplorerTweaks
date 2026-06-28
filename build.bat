@@ -8,7 +8,7 @@ setlocal enabledelayedexpansion
 
 echo.
 echo ============================================
-echo   ExplorerTweaks Build Script v2.4.1
+echo   ExplorerTweaks Build Script v2.5.0
 echo ============================================
 echo.
 

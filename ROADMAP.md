@@ -6,13 +6,6 @@ Backlog for ExplorerTweaks. Goal: stay focused on File Explorer and closely rela
 
 ### P1
 
-- [ ] P1 - Add a shared plan/apply/verify/rollback engine
-  Why: GUI import, preset apply, CLI apply, multi-user apply, and restore all mutate registry state through direct writes with no common pre-change backup, per-setting verification, or rollback manifest.
-  Evidence: `explorer_tweaks.py::set_registry_value`, `apply_profile_values`, `_import`, `_apply_preset`; WinSetView backup-first apply pattern.
-  Touches: `explorer_tweaks.py`, `tests/test_deployment_helpers.py`
-  Acceptance: Every local registry mutation can produce a dry-run plan, capture previous values, verify written values, report partial failures, and restore the captured previous state.
-  Complexity: L
-
 - [ ] P1 - Replace force-kill refresh with targeted shell notifications
   Why: `restart_explorer()` kills Explorer even for changes that can be refreshed with shell notifications or registry broadcasts.
   Evidence: `explorer_tweaks.py::restart_explorer`; Microsoft `SHChangeNotify` documentation.

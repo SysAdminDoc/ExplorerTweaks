@@ -27,7 +27,7 @@ a = Analysis(
     ],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=["assets/runtime_hook_mp.py"],
     excludes=[
         "matplotlib",
         "numpy",
