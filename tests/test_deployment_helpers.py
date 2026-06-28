@@ -118,6 +118,45 @@ class DeploymentHelperTests(unittest.TestCase):
         self.assertTrue(report.success)
         self.assertEqual(report.planned, 1)
         self.assertIn("previous: 0 (DWORD)", output.getvalue())
+        self.assertIn("REFRESH dry plan: shell_notify", output.getvalue())
+        self.assertIsNotNone(report.refresh)
+
+    def test_registry_plan_sends_refresh_after_successful_apply(self):
+        operation = et.registry_set_operation(r"Software\ExplorerTweaks\Test", "A", 1, "DWORD")
+        refresh_report = et.ShellRefreshReport("test plan", False, [et.REFRESH_SHELL_NOTIFY])
+
+        with patch.object(
+            et,
+            "capture_registry_operation_snapshot",
+            return_value=et.RegistryValueSnapshot(False),
+        ), patch.object(et, "apply_registry_operation"), patch.object(
+            et,
+            "verify_registry_operation",
+            return_value=True,
+        ), patch.object(et, "refresh_registry_changes", return_value=refresh_report) as refresh:
+            report = et.execute_registry_plan([operation], label="test plan", dry_run=False)
+
+        self.assertTrue(report.success)
+        self.assertIs(report.refresh, refresh_report)
+        refresh.assert_called_once_with([operation], "test plan")
+
+    def test_theme_settings_declare_theme_refresh_strategy(self):
+        settings = {setting.id: setting for setting in et.get_all_settings()}
+
+        self.assertEqual(settings["dark_system"].refresh_strategy, et.REFRESH_THEME_BROADCAST)
+        self.assertEqual(settings["dark_apps"].refresh_strategy, et.REFRESH_THEME_BROADCAST)
+        self.assertEqual(settings["show_extensions"].refresh_strategy, et.REFRESH_SHELL_NOTIFY)
+
+    def test_restart_explorer_dry_run_reports_explicit_fallback(self):
+        original_dry_run = et.DRY_RUN
+        et.DRY_RUN = True
+        try:
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertTrue(et.restart_explorer())
+        finally:
+            et.DRY_RUN = original_dry_run
+
+        self.assertIn("RESTART Explorer fallback", output.getvalue())
 
     def test_parse_reg_file_operations_supports_common_export_values(self):
         raw = (

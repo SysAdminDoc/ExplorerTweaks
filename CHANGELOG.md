@@ -2,6 +2,16 @@
 
 All notable changes to ExplorerTweaks will be documented in this file.
 
+## [v2.6.0] - 2026-06-28
+
+### Added
+- Added refresh strategy metadata for registry-backed settings.
+- Sent targeted shell notifications and theme broadcasts after successful local registry plans.
+- Added a manual Refresh Shell GUI action and kept forced Explorer restart as an explicit fallback with status output.
+
+### Fixed
+- Replaced default "restart Explorer" completion guidance with targeted-refresh status in GUI and CLI apply flows.
+
 ## [v2.5.0] - 2026-06-28
 
 ### Added

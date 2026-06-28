@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ExplorerTweaks v2.5.0 - Windows File Explorer Configuration Utility
+ExplorerTweaks v2.6.0 - Windows File Explorer Configuration Utility
 Pixel-accurate Windows 11 File Explorer and Taskbar simulation.
 
 Author: SysAdminDoc
@@ -10,6 +10,7 @@ License: MIT
 import multiprocessing
 multiprocessing.freeze_support()
 
+import ctypes
 import customtkinter as ctk
 from tkinter import messagebox
 import winreg
@@ -32,12 +33,17 @@ from enum import Enum
 from pathlib import Path
 
 APP_NAME = "ExplorerTweaks"
-APP_VERSION = "2.5.0"
+APP_VERSION = "2.6.0"
 DARKMODE_TASK_NAME = r"\ExplorerTweaks\DarkModeAutoSwitch"
 DARKMODE_SCRIPT_NAME = "darkmode_auto_switch.ps1"
 
 # Global dry-run flag
 DRY_RUN = False
+
+REFRESH_NONE = "none"
+REFRESH_SHELL_NOTIFY = "shell_notify"
+REFRESH_THEME_BROADCAST = "theme_broadcast"
+REFRESH_EXPLORER_RESTART = "explorer_restart"
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -168,6 +174,7 @@ class RegistrySetting:
     inverted: bool = False
     preview_key: Optional[str] = None
     info: Optional[str] = None  # "Why it matters" explanation
+    refresh_strategy: str = REFRESH_SHELL_NOTIFY
 
 
 # ============================================================================
@@ -184,11 +191,135 @@ def get_windows_version() -> OSVersion:
         else: return OSVersion.WINDOWS_11_24H2
     except: return OSVersion.UNKNOWN
 
-def restart_explorer():
+@dataclass
+class ShellRefreshReport:
+    label: str
+    dry_run: bool
+    strategies: List[str]
+    messages: List[str] = field(default_factory=list)
+    errors: List[str] = field(default_factory=list)
+    restart_available: bool = True
+
+    @property
+    def success(self) -> bool:
+        return not self.errors
+
+
+def unique_refresh_strategies(strategies: List[str]) -> List[str]:
+    ordered = []
+    for strategy in strategies:
+        if not strategy or strategy == REFRESH_NONE:
+            continue
+        if strategy not in ordered:
+            ordered.append(strategy)
+    return ordered
+
+
+def shell_change_notify() -> None:
+    shcne_assocchanged = 0x08000000
+    shcnf_idlist = 0x0000
+    ctypes.windll.shell32.SHChangeNotify(shcne_assocchanged, shcnf_idlist, None, None)
+
+
+def broadcast_setting_change(area: str, timeout_ms: int = 5000) -> bool:
+    hwnd_broadcast = 0xFFFF
+    wm_settingchange = 0x001A
+    smto_abortifhung = 0x0002
+    result = ctypes.c_ulong()
+    response = ctypes.windll.user32.SendMessageTimeoutW(
+        hwnd_broadcast,
+        wm_settingchange,
+        0,
+        area,
+        smto_abortifhung,
+        timeout_ms,
+        ctypes.byref(result),
+    )
+    return bool(response)
+
+
+def refresh_registry_strategies(
+    strategies: List[str],
+    label: str = "registry changes",
+    dry_run: Optional[bool] = None,
+) -> ShellRefreshReport:
+    effective_dry_run = DRY_RUN if dry_run is None else dry_run
+    ordered = unique_refresh_strategies(strategies)
+    report = ShellRefreshReport(label, effective_dry_run, ordered)
+
+    if not ordered:
+        return report
+
+    if effective_dry_run:
+        print(f"[DRY-RUN] REFRESH {label}: {', '.join(ordered)}")
+        if REFRESH_EXPLORER_RESTART in ordered:
+            print("[DRY-RUN]   Explorer restart would remain an explicit fallback.")
+        return report
+
+    if REFRESH_SHELL_NOTIFY in ordered:
+        try:
+            shell_change_notify()
+            if broadcast_setting_change(r"Software\Microsoft\Windows\CurrentVersion\Explorer"):
+                report.messages.append("Sent shell change notification and Explorer settings broadcast.")
+            else:
+                report.errors.append("Explorer settings broadcast timed out or was not acknowledged.")
+        except Exception as exc:
+            report.errors.append(f"Shell notification failed: {exc}")
+
+    if REFRESH_THEME_BROADCAST in ordered:
+        try:
+            if broadcast_setting_change("ImmersiveColorSet"):
+                report.messages.append("Sent theme settings broadcast.")
+            else:
+                report.errors.append("Theme settings broadcast timed out or was not acknowledged.")
+        except Exception as exc:
+            report.errors.append(f"Theme broadcast failed: {exc}")
+
+    if REFRESH_EXPLORER_RESTART in ordered:
+        report.messages.append("Explorer restart is available as an explicit fallback.")
+
+    for message in report.messages:
+        print(f"Refresh: {message}")
+    for error in report.errors:
+        print(f"Refresh warning: {error} Restart Explorer remains available as an explicit fallback.")
+    return report
+
+
+def refresh_registry_changes(
+    operations: List["RegistryOperation"],
+    label: str = "registry changes",
+    dry_run: Optional[bool] = None,
+) -> ShellRefreshReport:
+    return refresh_registry_strategies([operation.refresh_strategy for operation in operations], label, dry_run)
+
+
+def refresh_shell_now(dry_run: Optional[bool] = None) -> ShellRefreshReport:
+    return refresh_registry_strategies(
+        [REFRESH_SHELL_NOTIFY, REFRESH_THEME_BROADCAST],
+        label="manual shell refresh",
+        dry_run=dry_run,
+    )
+
+
+def restart_explorer() -> bool:
+    if DRY_RUN:
+        print("[DRY-RUN] RESTART Explorer fallback")
+        return True
     try:
-        subprocess.run(["taskkill", "/f", "/im", "explorer.exe"], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        result = subprocess.run(
+            ["taskkill", "/f", "/im", "explorer.exe"],
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        if result.returncode != 0 and "not found" not in (result.stderr + result.stdout).lower():
+            print(f"Explorer restart warning: {(result.stderr or result.stdout).strip()}")
         subprocess.Popen(["explorer.exe"], creationflags=subprocess.CREATE_NO_WINDOW)
-    except: pass
+        print("Explorer restarted.")
+        return True
+    except Exception as exc:
+        print(f"Explorer restart failed: {exc}")
+        return False
 
 def get_registry_value(path: str, name: str, hive: int = winreg.HKEY_CURRENT_USER) -> Optional[Any]:
     try:
@@ -230,6 +361,7 @@ class RegistryOperation:
     value: Any = None
     reg_type: Any = "DWORD"
     label: str = ""
+    refresh_strategy: str = REFRESH_SHELL_NOTIFY
 
 
 @dataclass
@@ -250,6 +382,7 @@ class RegistryPlanReport:
     errors: List[str] = field(default_factory=list)
     rollback_errors: List[str] = field(default_factory=list)
     rolled_back: int = 0
+    refresh: Optional[ShellRefreshReport] = None
 
     @property
     def success(self) -> bool:
@@ -329,16 +462,35 @@ def registry_operation_target(operation: RegistryOperation) -> str:
     return registry_value_target(operation.hive, operation.path, operation.name)
 
 
-def registry_set_operation(path: str, name: str, value: Any, reg_type: Any, hive: int = winreg.HKEY_CURRENT_USER, label: str = "") -> RegistryOperation:
-    return RegistryOperation("set_value", hive, path, name, value, reg_type, label)
+def registry_set_operation(
+    path: str,
+    name: str,
+    value: Any,
+    reg_type: Any,
+    hive: int = winreg.HKEY_CURRENT_USER,
+    label: str = "",
+    refresh_strategy: str = REFRESH_SHELL_NOTIFY,
+) -> RegistryOperation:
+    return RegistryOperation("set_value", hive, path, name, value, reg_type, label, refresh_strategy)
 
 
-def registry_delete_value_operation(path: str, name: str, hive: int = winreg.HKEY_CURRENT_USER, label: str = "") -> RegistryOperation:
-    return RegistryOperation("delete_value", hive, path, name, None, "DWORD", label)
+def registry_delete_value_operation(
+    path: str,
+    name: str,
+    hive: int = winreg.HKEY_CURRENT_USER,
+    label: str = "",
+    refresh_strategy: str = REFRESH_SHELL_NOTIFY,
+) -> RegistryOperation:
+    return RegistryOperation("delete_value", hive, path, name, None, "DWORD", label, refresh_strategy)
 
 
-def registry_delete_tree_operation(path: str, hive: int = winreg.HKEY_CURRENT_USER, label: str = "") -> RegistryOperation:
-    return RegistryOperation("delete_tree", hive, path, "", None, "DWORD", label)
+def registry_delete_tree_operation(
+    path: str,
+    hive: int = winreg.HKEY_CURRENT_USER,
+    label: str = "",
+    refresh_strategy: str = REFRESH_SHELL_NOTIFY,
+) -> RegistryOperation:
+    return RegistryOperation("delete_tree", hive, path, "", None, "DWORD", label, refresh_strategy)
 
 
 def read_registry_value_snapshot(hive: int, path: str, name: str) -> RegistryValueSnapshot:
@@ -536,6 +688,7 @@ def execute_registry_plan(
                 value_suffix = f" = {operation.value!r} ({registry_type_name(operation.reg_type)})"
             print(f"[DRY-RUN]   {operation.action.upper()} {registry_operation_target(operation)}{value_suffix}")
             print(f"[DRY-RUN]     previous: {summarize_registry_snapshot(snapshot)}")
+        report.refresh = refresh_registry_changes(operations, label, dry_run=True)
         LAST_REGISTRY_PLAN_REPORTS.append(report)
         return report
 
@@ -568,6 +721,7 @@ def execute_registry_plan(
             LAST_REGISTRY_PLAN_REPORTS.append(report)
             return report
 
+    report.refresh = refresh_registry_changes(operations, label)
     LAST_REGISTRY_PLAN_REPORTS.append(report)
     return report
 
@@ -969,7 +1123,17 @@ def apply_profile_values(profile_settings: dict, all_settings: List[RegistrySett
             lock_str = " [GP-LOCKED]" if locked else ""
             print(f"  {setting.name}: {target_value}{lock_str}")
             path = setting.reg_path if user_root is None else f"{user_root}\\{setting.reg_path}"
-            operations.append(registry_set_operation(path, setting.reg_name, reg_value, setting.reg_type, hive, setting.name))
+            operations.append(
+                registry_set_operation(
+                    path,
+                    setting.reg_name,
+                    reg_value,
+                    setting.reg_type,
+                    hive,
+                    setting.name,
+                    setting.refresh_strategy,
+                )
+            )
 
         report = execute_registry_plan(operations, label=f"apply profile to {target_label}")
         if report.success:
@@ -2022,9 +2186,9 @@ def get_all_settings() -> List[RegistrySetting]:
         RegistrySetting("snap_layouts", "Snap Layouts", "Layout grid.", "Performance", "Snapping", ADV, "EnableSnapBar", "DWORD", 1, 0, 1, min_os=OSVersion.WINDOWS_11_21H2, preview_key="snap_layouts",
             info="Hovering over the maximize button shows layout options for arranging windows."),
         RegistrySetting("dark_system", "Dark System", "Dark taskbar/Start.", "Theme", "Mode", THEME, "SystemUsesLightTheme", "DWORD", 0, 1, 1, inverted=True, preview_key="dark_mode",
-            info="Applies dark theme to Windows chrome: taskbar, Start menu, Action Center, and notifications."),
+            info="Applies dark theme to Windows chrome: taskbar, Start menu, Action Center, and notifications.", refresh_strategy=REFRESH_THEME_BROADCAST),
         RegistrySetting("dark_apps", "Dark Apps", "Dark app windows.", "Theme", "Mode", THEME, "AppsUseLightTheme", "DWORD", 0, 1, 1, inverted=True, preview_key="dark_mode",
-            info="Applies dark theme to app windows (Settings, Explorer, UWP apps). Independent of system theme."),
+            info="Applies dark theme to app windows (Settings, Explorer, UWP apps). Independent of system theme.", refresh_strategy=REFRESH_THEME_BROADCAST),
         RegistrySetting("show_gallery", "Gallery", "Photo gallery in nav.", "Windows 11", "Nav Pane", ADV, "ShowGallery", "DWORD", 1, 0, 1, min_os=OSVersion.WINDOWS_11_23H2, preview_key="show_gallery",
             info="Shows the Gallery view in the navigation pane for quick access to your photos."),
     ]
@@ -3052,7 +3216,10 @@ class App(ctk.CTk):
 
         bottom = ctk.CTkFrame(sidebar, fg_color="transparent")
         bottom.pack(fill="x", side="bottom", padx=8, pady=12)
-        ctk.CTkButton(bottom, text="🔄 Restart Explorer", command=self._restart, font=ctk.CTkFont(size=11, weight="bold"), fg_color=UI["accent"], hover_color=UI["accent_hover"], height=34, corner_radius=6).pack(fill="x", pady=(0, 6))
+        shell_row = ctk.CTkFrame(bottom, fg_color="transparent")
+        shell_row.pack(fill="x", pady=(0, 6))
+        ctk.CTkButton(shell_row, text="Refresh Shell", command=self._refresh_shell, font=ctk.CTkFont(size=10, weight="bold"), fg_color=UI["accent"], hover_color=UI["accent_hover"], height=30, corner_radius=6).pack(side="left", expand=True, fill="x", padx=(0, 3))
+        ctk.CTkButton(shell_row, text="Restart", command=self._restart, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=30, corner_radius=6).pack(side="left", expand=True, fill="x", padx=(3, 0))
 
         br = ctk.CTkFrame(bottom, fg_color="transparent")
         br.pack(fill="x")
@@ -3471,7 +3638,10 @@ class App(ctk.CTk):
         self._load_preview_state()
         for p in self.previews.values():
             p.state = self.preview_state
-        messagebox.showinfo("Preset Applied", f'Applied {count} settings from "{name}".\n\nRestart Explorer to see changes.')
+        messagebox.showinfo(
+            "Preset Applied",
+            f'Applied {count} settings from "{name}".\n\nTargeted shell refresh was sent. Restart Explorer remains available if Windows does not repaint every view.',
+        )
         self._show_category(self.current_cat)
 
     def _save_preset_dialog(self):
@@ -3578,8 +3748,23 @@ class App(ctk.CTk):
         except Exception as exc:
             messagebox.showerror("Auto Dark Mode", str(exc))
 
+    def _refresh_shell(self):
+        report = refresh_shell_now()
+        if report.success:
+            detail = "\n".join(report.messages) or "Targeted shell refresh sent."
+            messagebox.showinfo("Refresh Shell", f"{detail}\n\nRestart Explorer remains available if Windows does not repaint every view.")
+        else:
+            messagebox.showwarning(
+                "Refresh Shell",
+                "\n".join(report.errors) + "\n\nRestart Explorer remains available as an explicit fallback.",
+            )
+
     def _restart(self):
-        if messagebox.askyesno("Restart", "Restart Explorer?"): restart_explorer()
+        if messagebox.askyesno("Restart Explorer", "Force restart Explorer as a fallback?"):
+            if restart_explorer():
+                messagebox.showinfo("Restart Explorer", "Explorer restarted.")
+            else:
+                messagebox.showerror("Restart Explorer", "Could not restart Explorer. Check the console output for details.")
 
     def _export(self):
         from tkinter import filedialog
@@ -3630,7 +3815,7 @@ def cli_apply(profile_path: str, dry_run: bool = False, multi_user: bool = False
 
     print(f"\n{'[DRY-RUN] ' if dry_run else ''}Applied {count} setting(s).")
     if not dry_run:
-        print("Restart Explorer for changes to take effect.")
+        print("Targeted shell refresh sent where supported. Restart Explorer manually only if a view does not repaint.")
 
 
 def cli_export(output_path: str, fmt: str = "json", all_users: bool = False):
@@ -3812,7 +3997,7 @@ def main():
             count = apply_profile_values(preset["settings"], all_s, os_ver, multi_user=args.all_users)
             print(f"{'[DRY-RUN] ' if DRY_RUN else ''}Applied {count} setting(s).")
             if not DRY_RUN:
-                print("Restart Explorer for changes to take effect.")
+                print("Targeted shell refresh sent where supported. Restart Explorer manually only if a view does not repaint.")
             return
 
         if args.export:

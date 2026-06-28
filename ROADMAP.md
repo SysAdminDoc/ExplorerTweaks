@@ -6,13 +6,6 @@ Backlog for ExplorerTweaks. Goal: stay focused on File Explorer and closely rela
 
 ### P1
 
-- [ ] P1 - Replace force-kill refresh with targeted shell notifications
-  Why: `restart_explorer()` kills Explorer even for changes that can be refreshed with shell notifications or registry broadcasts.
-  Evidence: `explorer_tweaks.py::restart_explorer`; Microsoft `SHChangeNotify` documentation.
-  Touches: `explorer_tweaks.py`
-  Acceptance: Settings declare a refresh strategy; supported changes use targeted notification first, and Explorer restart remains an explicit fallback with status output.
-  Complexity: M
-
 - [ ] P1 - Add operation logs, GUI status, and exportable dry-run reports
   Why: Backup, restore, deployment, policy lock, and registry write failures are summarized but not retained in a user-visible diagnostic trail.
   Evidence: `explorer_tweaks.py` messagebox/print flows; Winhance and WinUtil automation transparency.
