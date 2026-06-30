@@ -2,6 +2,14 @@
 
 All notable changes to ExplorerTweaks will be documented in this file.
 
+## [v2.9.0] - 2026-06-30
+
+### Added
+- Added policy/CSP metadata for mapped Explorer, Search, and CloudContent settings.
+- Added managed-policy PowerShell export mode that writes mapped HKLM policy keys and reports omitted preference-only settings.
+- Added `--export-intune-remediation PROFILE DIR` to generate Intune detection and remediation PowerShell script pairs.
+- Added unit coverage for policy entry conversion, managed-policy script output, and Intune remediation export.
+
 ## [v2.8.0] - 2026-06-30
 
 ### Added

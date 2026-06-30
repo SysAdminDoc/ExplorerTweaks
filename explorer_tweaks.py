@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ExplorerTweaks v2.8.0 - Windows File Explorer Configuration Utility
+ExplorerTweaks v2.9.0 - Windows File Explorer Configuration Utility
 Pixel-accurate Windows 11 File Explorer and Taskbar simulation.
 
 Author: SysAdminDoc
@@ -34,7 +34,7 @@ from enum import Enum
 from pathlib import Path
 
 APP_NAME = "ExplorerTweaks"
-APP_VERSION = "2.8.0"
+APP_VERSION = "2.9.0"
 DARKMODE_TASK_NAME = r"\ExplorerTweaks\DarkModeAutoSwitch"
 DARKMODE_SCRIPT_NAME = "darkmode_auto_switch.ps1"
 
@@ -159,6 +159,18 @@ class PreviewState:
 
 
 @dataclass
+class PolicyMapping:
+    csp_uri: str
+    registry_path: str
+    registry_name: str
+    setting_catalog: str
+    enable_value: Any
+    disable_value: Any
+    registry_type: str = "DWORD"
+    scope: str = "device"
+
+
+@dataclass
 class RegistrySetting:
     id: str
     name: str
@@ -178,6 +190,7 @@ class RegistrySetting:
     preview_key: Optional[str] = None
     info: Optional[str] = None  # "Why it matters" explanation
     refresh_strategy: str = REFRESH_SHELL_NOTIFY
+    policy: Optional[PolicyMapping] = None
 
 
 # ============================================================================
@@ -900,6 +913,15 @@ def is_policy_locked(reg_path: str, reg_name: str) -> bool:
     return False
 
 
+def is_setting_policy_locked(setting: RegistrySetting) -> bool:
+    if setting.policy:
+        for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+            val = get_registry_value(setting.policy.registry_path, setting.policy.registry_name, hive)
+            if val is not None:
+                return True
+    return is_policy_locked(setting.reg_path, setting.reg_name)
+
+
 # ============================================================================
 # .REG FILE EXPORT
 # ============================================================================
@@ -973,55 +995,110 @@ def is_setting_supported(setting: RegistrySetting, os_version: OSVersion) -> boo
     return True
 
 
-def current_registry_entries(settings: List[RegistrySetting]) -> List[Dict[str, Any]]:
+def registry_value_to_setting_target(setting: RegistrySetting, value: Any) -> Any:
+    if value == setting.enable_value:
+        return True
+    if value == setting.disable_value:
+        return False
+    return value
+
+
+def policy_registry_entry(setting: RegistrySetting, target_value: Any) -> Optional[Dict[str, Any]]:
+    if not setting.policy:
+        return None
+    if isinstance(target_value, bool):
+        value = setting.policy.enable_value if target_value else setting.policy.disable_value
+    elif target_value == setting.enable_value:
+        value = setting.policy.enable_value
+    elif target_value == setting.disable_value:
+        value = setting.policy.disable_value
+    else:
+        value = target_value
+    return {
+        "path": setting.policy.registry_path,
+        "name": setting.policy.registry_name,
+        "type": setting.policy.registry_type,
+        "value": value,
+        "source": "managed_policy",
+        "setting_id": setting.id,
+        "label": setting.name,
+        "policy_csp": setting.policy.csp_uri,
+        "setting_catalog": setting.policy.setting_catalog,
+        "policy_scope": setting.policy.scope,
+    }
+
+
+def preference_registry_entry(setting: RegistrySetting, target_value: Any) -> Dict[str, Any]:
+    return {
+        "path": setting.reg_path,
+        "name": setting.reg_name,
+        "type": setting.reg_type,
+        "value": setting_to_registry_value(setting, target_value),
+        "source": "preference",
+        "setting_id": setting.id,
+        "label": setting.name,
+    }
+
+
+def current_registry_entries(settings: List[RegistrySetting], managed_policy: bool = False) -> List[Dict[str, Any]]:
     entries = []
     for setting in settings:
         value = get_registry_value(setting.reg_path, setting.reg_name)
         if value is None:
             value = setting.default_value
-        entries.append({
-            "path": setting.reg_path,
-            "name": setting.reg_name,
-            "type": setting.reg_type,
-            "value": value,
-        })
+        if managed_policy:
+            entry = policy_registry_entry(setting, registry_value_to_setting_target(setting, value))
+            if entry:
+                entries.append(entry)
+        else:
+            entries.append(preference_registry_entry(setting, registry_value_to_setting_target(setting, value)))
     return entries
 
 
-def profile_registry_entries(profile_settings: dict, settings: List[RegistrySetting]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+def profile_registry_entries(profile_settings: dict, settings: List[RegistrySetting], managed_policy: bool = False) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     settings_map = {s.id: s for s in settings}
     entries = []
     special = {}
 
     for setting_id, target_value in profile_settings.items():
         if setting_id in ("_classic", "classic_context_menu"):
-            special["classic_context_menu"] = bool(target_value)
+            if managed_policy:
+                special.setdefault("_policy_omitted", []).append("Classic Context Menu")
+            else:
+                special["classic_context_menu"] = bool(target_value)
             continue
         if setting_id in ("_search", "search_mode"):
-            special["search_mode"] = int(target_value)
+            if managed_policy:
+                special.setdefault("_policy_omitted", []).append("Search Box Mode")
+            else:
+                special["search_mode"] = int(target_value)
             continue
 
         setting = settings_map.get(setting_id)
         if not setting:
             continue
-        entries.append({
-            "path": setting.reg_path,
-            "name": setting.reg_name,
-            "type": setting.reg_type,
-            "value": setting_to_registry_value(setting, target_value),
-        })
+        if managed_policy:
+            entry = policy_registry_entry(setting, target_value)
+            if entry:
+                entries.append(entry)
+            else:
+                special.setdefault("_policy_omitted", []).append(setting.name)
+        else:
+            entries.append(preference_registry_entry(setting, target_value))
 
     return entries, special
 
 
-def build_powershell_script(entries: List[Dict[str, Any]], special: Optional[Dict[str, Any]] = None, default_all_users: bool = False) -> str:
+def build_powershell_script(entries: List[Dict[str, Any]], special: Optional[Dict[str, Any]] = None, default_all_users: bool = False, managed_policy: bool = False) -> str:
     special = special or {}
-    param_block = "param([switch]$CurrentUserOnly)" if default_all_users else "param([switch]$AllUsers)"
-    apply_line = "$ApplyAllUsers = -not $CurrentUserOnly.IsPresent" if default_all_users else "$ApplyAllUsers = $AllUsers.IsPresent"
+    param_block = "param()" if managed_policy else ("param([switch]$CurrentUserOnly)" if default_all_users else "param([switch]$AllUsers)")
+    apply_line = "$ApplyAllUsers = $false" if managed_policy else ("$ApplyAllUsers = -not $CurrentUserOnly.IsPresent" if default_all_users else "$ApplyAllUsers = $AllUsers.IsPresent")
+    mode_line = "# Mode: managed policy. Writes mapped HKLM policy keys for Intune or Group Policy-managed devices." if managed_policy else "# Mode: user preference. Writes ExplorerTweaks preference keys under user hives."
 
     lines = [
         f"# Generated by ExplorerTweaks v{APP_VERSION}",
         "# Applies Explorer, taskbar, search, and shell registry preferences.",
+        mode_line,
         "[CmdletBinding()]",
         param_block,
         "$ErrorActionPreference = 'Stop'",
@@ -1029,15 +1106,26 @@ def build_powershell_script(entries: List[Dict[str, Any]], special: Optional[Dic
         "",
         "function Get-ExplorerTweaksTargets {",
         "    param([bool]$ForAllUsers)",
-        "    if (-not $ForAllUsers) { return @('HKCU:') }",
-        "    $targets = @('Registry::HKEY_USERS\\.DEFAULT')",
-        "    Get-ChildItem -Path 'Registry::HKEY_USERS' | ForEach-Object {",
-        "        $sid = Split-Path $_.Name -Leaf",
-        "        if ($sid -match '^S-\\d-\\d+-(\\d+-)+\\d+$') {",
-        "            $targets += \"Registry::HKEY_USERS\\$sid\"",
-        "        }",
-        "    }",
-        "    return $targets | Select-Object -Unique",
+    ]
+
+    if managed_policy:
+        lines.extend([
+            "    return @('Registry::HKEY_LOCAL_MACHINE')",
+        ])
+    else:
+        lines.extend([
+            "    if (-not $ForAllUsers) { return @('HKCU:') }",
+            "    $targets = @('Registry::HKEY_USERS\\.DEFAULT')",
+            "    Get-ChildItem -Path 'Registry::HKEY_USERS' | ForEach-Object {",
+            "        $sid = Split-Path $_.Name -Leaf",
+            "        if ($sid -match '^S-\\d-\\d+-(\\d+-)+\\d+$') {",
+            "            $targets += \"Registry::HKEY_USERS\\$sid\"",
+            "        }",
+            "    }",
+            "    return $targets | Select-Object -Unique",
+        ])
+
+    lines.extend([
         "}",
         "",
         "function Set-ExplorerTweaksValue {",
@@ -1054,7 +1142,7 @@ def build_powershell_script(entries: List[Dict[str, Any]], special: Optional[Dic
         "}",
         "",
         "$Settings = @(",
-    ]
+    ])
 
     for entry in entries:
         value = int(entry["value"]) if str(entry["type"]).upper() == "DWORD" else ps_quote(entry["value"])
@@ -1065,7 +1153,13 @@ def build_powershell_script(entries: List[Dict[str, Any]], special: Optional[Dic
             + ps_quote(entry["name"])
             + "; Type = "
             + ps_quote(str(entry["type"]).upper())
-            + f"; Value = {value} }},"
+            + f"; Value = {value}; Source = "
+            + ps_quote(entry.get("source", "preference"))
+            + "; PolicyCsp = "
+            + ps_quote(entry.get("policy_csp", ""))
+            + "; SettingCatalog = "
+            + ps_quote(entry.get("setting_catalog", ""))
+            + " },"
         )
 
     lines.extend([
@@ -1077,7 +1171,7 @@ def build_powershell_script(entries: List[Dict[str, Any]], special: Optional[Dic
         "    }",
     ])
 
-    if "search_mode" in special:
+    if not managed_policy and "search_mode" in special:
         lines.append(
             "    Set-ExplorerTweaksValue -HiveRoot $target -SubPath "
             + ps_quote(r"Software\Microsoft\Windows\CurrentVersion\Search")
@@ -1085,7 +1179,7 @@ def build_powershell_script(entries: List[Dict[str, Any]], special: Optional[Dic
             + str(int(special["search_mode"]))
         )
 
-    if "classic_context_menu" in special:
+    if not managed_policy and "classic_context_menu" in special:
         classic_path = r"Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}"
         inproc_path = classic_path + r"\InprocServer32"
         if special["classic_context_menu"]:
@@ -1105,28 +1199,111 @@ def build_powershell_script(entries: List[Dict[str, Any]], special: Optional[Dic
         "Write-Host \"Applied ExplorerTweaks settings to $($Targets.Count) registry hive(s).\"",
         "",
     ])
+    omitted = special.get("_policy_omitted", [])
+    if managed_policy and omitted:
+        lines.append("# Omitted unmapped preference-only settings: " + ", ".join(omitted))
     return "\r\n".join(lines)
 
 
-def export_ps1_file(settings: List[RegistrySetting], filepath: str, all_users: bool = False):
+def build_intune_detection_script(entries: List[Dict[str, Any]]) -> str:
+    lines = [
+        f"# Generated by ExplorerTweaks v{APP_VERSION}",
+        "# Intune remediation detection script. Exit 0 = compliant, exit 1 = remediation needed.",
+        "[CmdletBinding()]",
+        "$ErrorActionPreference = 'Stop'",
+        "$Settings = @(",
+    ]
+    for entry in entries:
+        value = int(entry["value"]) if str(entry["type"]).upper() == "DWORD" else ps_quote(entry["value"])
+        lines.append(
+            "    @{ Path = "
+            + ps_quote(entry["path"])
+            + "; Name = "
+            + ps_quote(entry["name"])
+            + "; Type = "
+            + ps_quote(str(entry["type"]).upper())
+            + f"; Value = {value}; PolicyCsp = "
+            + ps_quote(entry.get("policy_csp", ""))
+            + "; SettingCatalog = "
+            + ps_quote(entry.get("setting_catalog", ""))
+            + " },"
+        )
+    lines.extend([
+        ")",
+        "$Drift = @()",
+        "foreach ($setting in $Settings) {",
+        "    $targetPath = Join-Path 'Registry::HKEY_LOCAL_MACHINE' $setting.Path",
+        "    try {",
+        "        $actual = (Get-ItemProperty -LiteralPath $targetPath -Name $setting.Name -ErrorAction Stop).($setting.Name)",
+        "    } catch {",
+        "        $actual = $null",
+        "    }",
+        "    if ([string]$actual -ne [string]$setting.Value) {",
+        "        $Drift += \"$($setting.Name) expected $($setting.Value), found $actual\"",
+        "    }",
+        "}",
+        "if ($Drift.Count -eq 0) {",
+        "    Write-Output 'ExplorerTweaks policy settings are compliant.'",
+        "    exit 0",
+        "}",
+        "$Drift | ForEach-Object { Write-Output \"Drift: $_\" }",
+        "exit 1",
+        "",
+    ])
+    return "\r\n".join(lines)
+
+
+def write_powershell_file(filepath: str, script: str):
+    with open(filepath, "w", encoding="utf-8-sig", newline="") as f:
+        f.write(script)
+
+
+def export_ps1_file(settings: List[RegistrySetting], filepath: str, all_users: bool = False, managed_policy: bool = False):
     special = {
         "classic_context_menu": SpecialSettings.get_classic_context_menu(),
         "search_mode": SpecialSettings.get_search_mode(),
     }
-    script = build_powershell_script(current_registry_entries(settings), special, default_all_users=all_users)
-    with open(filepath, "w", encoding="utf-8-sig", newline="\r\n") as f:
-        f.write(script)
+    if managed_policy:
+        special = {}
+    script = build_powershell_script(current_registry_entries(settings, managed_policy=managed_policy), special, default_all_users=all_users, managed_policy=managed_policy)
+    write_powershell_file(filepath, script)
 
 
-def export_profile_ps1(profile_path: str, filepath: str, all_users: bool = False):
+def export_profile_ps1(profile_path: str, filepath: str, all_users: bool = False, managed_policy: bool = False):
     data = load_preset_from_file(profile_path)
     if not data:
         raise ValueError(f"Could not parse profile: {profile_path}")
     profile_settings = data.get("settings", data)
-    entries, special = profile_registry_entries(profile_settings, get_all_settings())
-    script = build_powershell_script(entries, special, default_all_users=all_users)
-    with open(filepath, "w", encoding="utf-8-sig", newline="\r\n") as f:
-        f.write(script)
+    entries, special = profile_registry_entries(profile_settings, get_all_settings(), managed_policy=managed_policy)
+    if managed_policy and not entries:
+        raise ValueError("Profile does not contain settings with managed policy mappings.")
+    script = build_powershell_script(entries, special, default_all_users=all_users, managed_policy=managed_policy)
+    write_powershell_file(filepath, script)
+
+
+def export_intune_remediation(profile_path: str, output_dir: str) -> Dict[str, Any]:
+    data = load_preset_from_file(profile_path)
+    if not data:
+        raise ValueError(f"Could not parse profile: {profile_path}")
+    profile_settings = data.get("settings", data)
+    entries, special = profile_registry_entries(profile_settings, get_all_settings(), managed_policy=True)
+    if not entries:
+        raise ValueError("Profile does not contain settings with managed policy mappings.")
+
+    os.makedirs(output_dir, exist_ok=True)
+    detect_path = os.path.join(output_dir, "ExplorerTweaks_detect.ps1")
+    remediate_path = os.path.join(output_dir, "ExplorerTweaks_remediate.ps1")
+    write_powershell_file(detect_path, build_intune_detection_script(entries))
+    write_powershell_file(
+        remediate_path,
+        build_powershell_script(entries, special, managed_policy=True),
+    )
+    return {
+        "detect": detect_path,
+        "remediate": remediate_path,
+        "settings": len(entries),
+        "omitted": special.get("_policy_omitted", []),
+    }
 
 
 def remote_apply_profile(profile_path: str, computers: List[str], all_users: bool = False, dry_run: bool = False) -> int:
@@ -1277,7 +1454,7 @@ def apply_profile_values(profile_settings: dict, all_settings: List[RegistrySett
                 continue
 
             reg_value = setting_to_registry_value(setting, target_value)
-            locked = is_policy_locked(setting.reg_path, setting.reg_name)
+            locked = is_setting_policy_locked(setting)
             lock_str = " [GP-LOCKED]" if locked else ""
             print(f"  {setting.name}: {target_value}{lock_str}")
             if locked:
@@ -2310,10 +2487,15 @@ def get_all_settings() -> List[RegistrySetting]:
     CDM = r"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager"
     THEME = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
     DWM = r"Software\Microsoft\Windows\DWM"
+    POL_EXPLORER_CLASSIC = r"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
+    POL_EXPLORER = r"Software\Policies\Microsoft\Windows\Explorer"
+    POL_SEARCH = r"Software\Policies\Microsoft\Windows\Windows Search"
+    POL_CLOUD = r"Software\Policies\Microsoft\Windows\CloudContent"
     
     return [
         RegistrySetting("show_extensions", "Show File Extensions", "Display .txt, .exe, .pdf after filenames.", "Appearance", "File Display", ADV, "HideFileExt", "DWORD", 0, 1, 1, inverted=True, preview_key="show_extensions",
-            info="Security best-practice. Hidden extensions let malware disguise 'invoice.pdf.exe' as a PDF."),
+            info="Security best-practice. Hidden extensions let malware disguise 'invoice.pdf.exe' as a PDF.",
+            policy=PolicyMapping("./Device/Vendor/MSFT/Policy/Config/ADMX_Explorer/HideFileExt", POL_EXPLORER_CLASSIC, "HideFileExt", "File Explorer: Hide extensions for known file types", 0, 1)),
         RegistrySetting("show_hidden", "Show Hidden Files", "Display hidden files and folders.", "Appearance", "File Display", ADV, "Hidden", "DWORD", 1, 2, 2, preview_key="show_hidden",
             info="Reveals dotfiles and items with the Hidden attribute. Useful for devs and troubleshooting."),
         RegistrySetting("show_system", "Show System Files", "Display protected OS files.", "Appearance", "File Display", ADV, "ShowSuperHidden", "DWORD", 1, 0, 0, warning="!", preview_key="show_system",
@@ -2361,11 +2543,14 @@ def get_all_settings() -> List[RegistrySetting]:
         RegistrySetting("sync_notifications", "OneDrive Notifications", "Sync provider promos.", "Privacy", "Ads", ADV, "ShowSyncProviderNotifications", "DWORD", 1, 0, 1, preview_key="sync_notifications",
             info="Disabling removes OneDrive and other sync provider promotional banners from Explorer."),
         RegistrySetting("silent_installs", "Silent App Installs", "Auto-install apps.", "Privacy", "Ads", CDM, "SilentInstalledAppsEnabled", "DWORD", 1, 0, 1, preview_key="silent_installs",
-            info="Windows silently installs suggested apps (Candy Crush, etc.). Disabling stops this."),
+            info="Windows silently installs suggested apps (Candy Crush, etc.). Disabling stops this.",
+            policy=PolicyMapping("./Device/Vendor/MSFT/Policy/Config/Experience/AllowWindowsConsumerFeatures", POL_CLOUD, "DisableWindowsConsumerFeatures", "Experience: Allow Windows consumer features", 0, 1)),
         RegistrySetting("bing_search", "Bing Web Search", "Web results in search.", "Search", "Web", SEARCH, "BingSearchEnabled", "DWORD", 1, 0, 1, preview_key="bing_search",
-            info="Start menu search includes Bing web results. Disabling makes search local-only and faster."),
+            info="Start menu search includes Bing web results. Disabling makes search local-only and faster.",
+            policy=PolicyMapping("./Device/Vendor/MSFT/Policy/Config/ADMX_WindowsExplorer/DisableSearchBoxSuggestions", POL_EXPLORER, "DisableSearchBoxSuggestions", "File Explorer: Turn off display of recent search entries in the File Explorer search box", 0, 1)),
         RegistrySetting("cortana", "Cortana", "Voice assistant.", "Search", "Cortana", SEARCH, "CortanaConsent", "DWORD", 1, 0, 1, preview_key="cortana",
-            info="Enables Cortana voice assistant integration. Deprecated in Windows 11 23H2+."),
+            info="Enables Cortana voice assistant integration. Deprecated in Windows 11 23H2+.",
+            policy=PolicyMapping("./Device/Vendor/MSFT/Policy/Config/Search/AllowCortana", POL_SEARCH, "AllowCortana", "Search: Allow Cortana", 1, 0)),
         RegistrySetting("search_history", "Search History", "Remember searches.", "Search", "Cortana", SEARCH, "HistoryViewEnabled", "DWORD", 1, 0, 1, preview_key="search_history",
             info="Shows your recent search queries in the search panel. Disabling improves privacy."),
         RegistrySetting("taskview_button", "Task View", "Virtual desktops button.", "Taskbar", "Buttons", ADV, "ShowTaskViewButton", "DWORD", 1, 0, 1, preview_key="taskview_button",
@@ -3133,7 +3318,7 @@ class SettingCard(ctk.CTkFrame):
     def __init__(self, parent, setting: RegistrySetting, on_change: Callable = None):
         super().__init__(parent, fg_color=UI["card"], corner_radius=8)
         self.setting, self.on_change = setting, on_change
-        self._policy_locked = is_policy_locked(setting.reg_path, setting.reg_name)
+        self._policy_locked = is_setting_policy_locked(setting)
         self.grid_columnconfigure(0, weight=1)
 
         header = ctk.CTkFrame(self, fg_color="transparent")
@@ -4108,7 +4293,7 @@ def cli_apply(profile_path: str, dry_run: bool = False, multi_user: bool = False
         print("Targeted shell refresh sent where supported. Restart Explorer manually only if a view does not repaint.")
 
 
-def cli_export(output_path: str, fmt: str = "json", all_users: bool = False):
+def cli_export(output_path: str, fmt: str = "json", all_users: bool = False, managed_policy: bool = False):
     """Export current settings from CLI."""
     all_s = get_all_settings()
 
@@ -4116,7 +4301,7 @@ def cli_export(output_path: str, fmt: str = "json", all_users: bool = False):
         export_reg_file(all_s, output_path)
         print(f"Exported .reg file: {output_path}")
     elif fmt == "ps1":
-        export_ps1_file(all_s, output_path, all_users=all_users)
+        export_ps1_file(all_s, output_path, all_users=all_users, managed_policy=managed_policy)
         print(f"Exported PowerShell script: {output_path}")
     else:
         data = {s.id: get_registry_value(s.reg_path, s.reg_name) for s in all_s if get_registry_value(s.reg_path, s.reg_name) is not None}
@@ -4127,8 +4312,8 @@ def cli_export(output_path: str, fmt: str = "json", all_users: bool = False):
         print(f"Exported JSON: {output_path}")
 
 
-def cli_export_profile_ps1(profile_path: str, output_path: str, all_users: bool = False):
-    export_profile_ps1(profile_path, output_path, all_users=all_users)
+def cli_export_profile_ps1(profile_path: str, output_path: str, all_users: bool = False, managed_policy: bool = False):
+    export_profile_ps1(profile_path, output_path, all_users=all_users, managed_policy=managed_policy)
     print(f"Exported profile PowerShell script: {output_path}")
 
 
@@ -4167,6 +4352,8 @@ def main():
     parser.add_argument("--export", metavar="FILE", help="Export current settings to JSON or .reg file")
     parser.add_argument("--format", choices=["json", "reg", "ps1"], default="json", help="Export format (default: json)")
     parser.add_argument("--export-profile-ps1", nargs=2, metavar=("PROFILE", "FILE"), help="Export a profile as a PowerShell deployment script")
+    parser.add_argument("--managed-policy", action="store_true", help="For PowerShell exports, write mapped HKLM policy keys instead of user preference keys")
+    parser.add_argument("--export-intune-remediation", nargs=2, metavar=("PROFILE", "DIR"), help="Export Intune remediation detection/remediation scripts for mapped policy settings")
     parser.add_argument("--all-users", action="store_true", help="Apply/export PowerShell for all loaded user hives plus .DEFAULT")
     parser.add_argument("--remote-apply", metavar="PROFILE", help="Apply a profile to remote computers with PowerShell Remoting")
     parser.add_argument("--computer", action="append", default=[], help="Remote computer name for --remote-apply; repeat or comma-separate")
@@ -4254,7 +4441,21 @@ def main():
         if args.export_profile_ps1:
             profile_path, output_path = args.export_profile_ps1
             try:
-                cli_export_profile_ps1(profile_path, output_path, all_users=args.all_users)
+                cli_export_profile_ps1(profile_path, output_path, all_users=args.all_users, managed_policy=args.managed_policy)
+                return
+            except Exception as exc:
+                print(f"Error: {exc}")
+                sys.exit(1)
+
+        if args.export_intune_remediation:
+            profile_path, output_dir = args.export_intune_remediation
+            try:
+                result = export_intune_remediation(profile_path, output_dir)
+                print(f"Exported Intune detection script: {result['detect']}")
+                print(f"Exported Intune remediation script: {result['remediate']}")
+                print(f"Mapped policy settings: {result['settings']}")
+                if result["omitted"]:
+                    print(f"Omitted preference-only settings: {', '.join(result['omitted'])}")
                 return
             except Exception as exc:
                 print(f"Error: {exc}")
@@ -4296,7 +4497,7 @@ def main():
             return
 
         if args.export:
-            cli_export(args.export, args.format, all_users=args.all_users)
+            cli_export(args.export, args.format, all_users=args.all_users, managed_policy=args.managed_policy)
             return
 
         # If only --dry-run or --focus is passed, launch GUI with that mode.

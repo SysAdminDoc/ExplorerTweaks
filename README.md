@@ -1,6 +1,6 @@
-# ExplorerTweaks v2.8.0
+# ExplorerTweaks v2.9.0
 
-![Version](https://img.shields.io/badge/Version-2.8.0-1DB954?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.9.0-1DB954?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=for-the-badge&logo=windows)
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)
@@ -20,6 +20,7 @@ ExplorerTweaks is a Windows File Explorer and shell configuration utility with a
 - Targeted shell/theme refresh after supported changes, with forced Explorer restart kept as an explicit fallback.
 - Persistent GUI operation log/status panel plus structured JSON operation reports from CLI dry-runs.
 - Windows 11 25H2-aware OS detection and min/max build gates for setting catalog compatibility.
+- Managed policy metadata for mapped settings plus Intune remediation detection/remediation script export.
 - PowerShell deployment script export for current-user or all-loaded-user registry hives.
 - PSRemoting profile push for fleets that already have WinRM access configured.
 - Multi-user local apply across `HKU\.DEFAULT` and loaded user SIDs.
@@ -56,7 +57,10 @@ python explorer_tweaks.py --apply profile.json --all-users
 python explorer_tweaks.py --export settings.json
 python explorer_tweaks.py --export settings.reg --format reg
 python explorer_tweaks.py --export settings.ps1 --format ps1 --all-users
+python explorer_tweaks.py --export settings-policy.ps1 --format ps1 --managed-policy
 python explorer_tweaks.py --export-profile-ps1 profile.json deploy.ps1 --all-users
+python explorer_tweaks.py --export-profile-ps1 profile.json deploy-policy.ps1 --managed-policy
+python explorer_tweaks.py --export-intune-remediation profile.json .\intune-remediation
 python explorer_tweaks.py --remote-apply profile.json --computer PC-01 --computer PC-02 --dry-run
 python explorer_tweaks.py --backup ExplorerTweaks_backup.zip
 python explorer_tweaks.py --restore ExplorerTweaks_backup.zip
@@ -83,6 +87,8 @@ python explorer_tweaks.py --wipe-recent
 ## Deployment Notes
 
 `--format ps1` exports the current machine state as a PowerShell script. By default it applies to the current user; pass `--all-users` to make the script target `HKU\.DEFAULT` and all loaded user SIDs unless the script is run with `-CurrentUserOnly`.
+
+Pass `--managed-policy` with PowerShell exports to write mapped HKLM policy keys instead of preference keys. Settings without a declared policy/CSP equivalent are omitted and reported. `--export-intune-remediation PROFILE DIR` writes `ExplorerTweaks_detect.ps1` and `ExplorerTweaks_remediate.ps1` for Intune remediation packages.
 
 `--remote-apply` uses PowerShell Remoting and assumes WinRM access is already configured for the target computers. It does not manage credentials or enable remoting.
 

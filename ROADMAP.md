@@ -4,15 +4,6 @@ Backlog for ExplorerTweaks. Goal: stay focused on File Explorer and closely rela
 
 ## Research-Driven Additions
 
-### P1
-
-- [ ] P1 - Extend policy and deployment metadata for Intune/MDM
-  Why: Existing PowerShell export is useful, but enterprise users need policy/CSP awareness and Settings Catalog/remediation packaging guidance for managed devices.
-  Evidence: `explorer_tweaks.py::is_policy_locked`, `build_powershell_script`; Microsoft Policy CSP and Intune Settings Catalog docs.
-  Touches: `explorer_tweaks.py`, `README.md`
-  Acceptance: Settings can declare policy/CSP equivalents; exports distinguish preference writes from managed policy writes and can generate Intune remediation-ready script pairs.
-  Complexity: L
-
 ### P2
 
 - [ ] P2 - Add Explorer folder-view defaults management

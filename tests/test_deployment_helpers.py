@@ -68,6 +68,65 @@ class DeploymentHelperTests(unittest.TestCase):
         self.assertIn(r"InprocServer32", script)
         self.assertIn("HideFileExt", script)
 
+    def test_profile_registry_entries_can_target_managed_policy_mappings(self):
+        entries, special = et.profile_registry_entries(
+            {
+                "show_extensions": True,
+                "bing_search": False,
+                "classic_context_menu": True,
+                "show_hidden": True,
+            },
+            et.get_all_settings(),
+            managed_policy=True,
+        )
+
+        by_name = {entry["name"]: entry for entry in entries}
+        self.assertEqual(by_name["HideFileExt"]["path"], r"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer")
+        self.assertEqual(by_name["HideFileExt"]["value"], 0)
+        self.assertEqual(by_name["DisableSearchBoxSuggestions"]["path"], r"Software\Policies\Microsoft\Windows\Explorer")
+        self.assertEqual(by_name["DisableSearchBoxSuggestions"]["value"], 1)
+        self.assertEqual(by_name["DisableSearchBoxSuggestions"]["source"], "managed_policy")
+        self.assertIn("Classic Context Menu", special["_policy_omitted"])
+        self.assertIn("Show Hidden Files", special["_policy_omitted"])
+
+    def test_managed_policy_powershell_script_targets_hklm_and_marks_source(self):
+        entries, special = et.profile_registry_entries(
+            {"cortana": False},
+            et.get_all_settings(),
+            managed_policy=True,
+        )
+
+        script = et.build_powershell_script(entries, special, managed_policy=True)
+
+        self.assertIn("Mode: managed policy", script)
+        self.assertIn("Registry::HKEY_LOCAL_MACHINE", script)
+        self.assertIn("Source = 'managed_policy'", script)
+        self.assertIn("AllowCortana", script)
+        self.assertNotIn("Registry::HKEY_USERS", script)
+
+    def test_intune_remediation_export_writes_detection_and_remediation_pair(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            profile = Path(tmp) / "profile.json"
+            out_dir = Path(tmp) / "intune"
+            profile.write_text(
+                json.dumps({"settings": {"bing_search": False, "show_hidden": True}}),
+                encoding="utf-8",
+            )
+
+            result = et.export_intune_remediation(str(profile), str(out_dir))
+
+            detect = Path(result["detect"]).read_text(encoding="utf-8-sig")
+            remediate = Path(result["remediate"]).read_text(encoding="utf-8-sig")
+            self.assertNotIn(b"\r\r\n", Path(result["detect"]).read_bytes())
+            self.assertNotIn(b"\r\r\n", Path(result["remediate"]).read_bytes())
+            self.assertEqual(result["settings"], 1)
+            self.assertIn("exit 0", detect)
+            self.assertIn("exit 1", detect)
+            self.assertIn("DisableSearchBoxSuggestions", detect)
+            self.assertIn("Mode: managed policy", remediate)
+            self.assertIn("DisableSearchBoxSuggestions", remediate)
+            self.assertIn("Show Hidden Files", result["omitted"])
+
     def test_darkmode_script_uses_location_api_and_coordinate_overrides(self):
         script = et.build_darkmode_auto_switch_script(40.123456789, -75.987654321)
 
