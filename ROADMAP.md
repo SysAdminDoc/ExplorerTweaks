@@ -13,13 +13,6 @@ Backlog for ExplorerTweaks. Goal: stay focused on File Explorer and closely rela
   Acceptance: Settings can declare policy/CSP equivalents; exports distinguish preference writes from managed policy writes and can generate Intune remediation-ready script pairs.
   Complexity: L
 
-- [ ] P1 - Add Windows 11 25H2 compatibility gates
-  Why: The OS enum stops at 24H2 while competitors ship compatibility updates around Windows build changes.
-  Evidence: `explorer_tweaks.py::OSVersion`, `get_windows_version`; StartAllBack and ExplorerPatcher compatibility cadence.
-  Touches: `explorer_tweaks.py`, `tests/test_deployment_helpers.py`
-  Acceptance: OS detection recognizes 25H2+ builds, unsupported or changed settings show clear warnings, and catalog tests pin min/max build behavior.
-  Complexity: S
-
 ### P2
 
 - [ ] P2 - Add Explorer folder-view defaults management

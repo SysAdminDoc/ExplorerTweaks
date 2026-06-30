@@ -1,6 +1,6 @@
-# ExplorerTweaks v2.7.0
+# ExplorerTweaks v2.8.0
 
-![Version](https://img.shields.io/badge/Version-2.7.0-1DB954?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.8.0-1DB954?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=for-the-badge&logo=windows)
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)
@@ -19,6 +19,7 @@ ExplorerTweaks is a Windows File Explorer and shell configuration utility with a
 - Shared registry plan/apply/verify/rollback engine for local GUI, CLI, preset, multi-user, and restore operations.
 - Targeted shell/theme refresh after supported changes, with forced Explorer restart kept as an explicit fallback.
 - Persistent GUI operation log/status panel plus structured JSON operation reports from CLI dry-runs.
+- Windows 11 25H2-aware OS detection and min/max build gates for setting catalog compatibility.
 - PowerShell deployment script export for current-user or all-loaded-user registry hives.
 - PSRemoting profile push for fleets that already have WinRM access configured.
 - Multi-user local apply across `HKU\.DEFAULT` and loaded user SIDs.

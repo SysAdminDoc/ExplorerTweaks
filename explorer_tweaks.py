@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ExplorerTweaks v2.7.0 - Windows File Explorer Configuration Utility
+ExplorerTweaks v2.8.0 - Windows File Explorer Configuration Utility
 Pixel-accurate Windows 11 File Explorer and Taskbar simulation.
 
 Author: SysAdminDoc
@@ -34,7 +34,7 @@ from enum import Enum
 from pathlib import Path
 
 APP_NAME = "ExplorerTweaks"
-APP_VERSION = "2.7.0"
+APP_VERSION = "2.8.0"
 DARKMODE_TASK_NAME = r"\ExplorerTweaks\DarkModeAutoSwitch"
 DARKMODE_SCRIPT_NAME = "darkmode_auto_switch.ps1"
 
@@ -109,6 +109,7 @@ class OSVersion(Enum):
     WINDOWS_11_22H2 = "11_22H2"
     WINDOWS_11_23H2 = "11_23H2"
     WINDOWS_11_24H2 = "11_24H2"
+    WINDOWS_11_25H2 = "11_25H2"
     UNKNOWN = "unknown"
 
 
@@ -190,7 +191,8 @@ def get_windows_version() -> OSVersion:
         elif build < 22621: return OSVersion.WINDOWS_11_21H2
         elif build < 22631: return OSVersion.WINDOWS_11_22H2
         elif build < 26100: return OSVersion.WINDOWS_11_23H2
-        else: return OSVersion.WINDOWS_11_24H2
+        elif build < 26200: return OSVersion.WINDOWS_11_24H2
+        else: return OSVersion.WINDOWS_11_25H2
     except: return OSVersion.UNKNOWN
 
 @dataclass
@@ -959,6 +961,7 @@ def is_setting_supported(setting: RegistrySetting, os_version: OSVersion) -> boo
         OSVersion.WINDOWS_11_22H2,
         OSVersion.WINDOWS_11_23H2,
         OSVersion.WINDOWS_11_24H2,
+        OSVersion.WINDOWS_11_25H2,
     ]
     if os_version not in order:
         return True
@@ -3348,7 +3351,7 @@ class App(ctk.CTk):
         self.preview_state.snap_layouts = gb(adv, "EnableSnapBar", 1, True)
         light = get_registry_value(theme, "AppsUseLightTheme")
         self.preview_state.dark_mode = (light == 0) if light is not None else True
-        if self.os_version in [OSVersion.WINDOWS_11_23H2, OSVersion.WINDOWS_11_24H2]:
+        if self.os_version in [OSVersion.WINDOWS_11_23H2, OSVersion.WINDOWS_11_24H2, OSVersion.WINDOWS_11_25H2]:
             self.preview_state.show_gallery = gb(adv, "ShowGallery", 1, True)
         else:
             self.preview_state.show_gallery = False
@@ -3560,6 +3563,23 @@ class App(ctk.CTk):
 
         if cat == "Taskbar":
             SearchModeCard(self.scroll, self._on_change).grid(row=row, column=0, sticky="ew", pady=(0, 4))
+            row += 1
+
+        skipped_settings = [s for s in self.all_settings if s.category == cat and not is_setting_supported(s, self.os_version)]
+        if skipped_settings:
+            skipped_names = ", ".join(s.name for s in skipped_settings[:3])
+            extra = "" if len(skipped_settings) <= 3 else f" and {len(skipped_settings) - 3} more"
+            notice = ctk.CTkFrame(self.scroll, fg_color=UI["hover"], corner_radius=6, border_width=1, border_color=UI["border"])
+            notice.grid(row=row, column=0, sticky="ew", pady=(0, 8))
+            ctk.CTkLabel(
+                notice,
+                text=f"{len(skipped_settings)} setting(s) hidden for {self.os_version.value}: {skipped_names}{extra}",
+                font=ctk.CTkFont(size=10),
+                text_color=UI["text_sec"],
+                anchor="w",
+                wraplength=360,
+                justify="left",
+            ).pack(fill="x", padx=10, pady=8)
             row += 1
 
         cat_settings = [s for s in self.settings if s.category == cat]

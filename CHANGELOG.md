@@ -2,6 +2,15 @@
 
 All notable changes to ExplorerTweaks will be documented in this file.
 
+## [v2.8.0] - 2026-06-30
+
+### Added
+- Added Windows 11 25H2 detection for OS build `26200` and later.
+- Added catalog tests that pin 24H2/25H2 detection and min/max build gating behavior.
+
+### Fixed
+- Unsupported settings filtered by OS min/max gates now show a category notice instead of disappearing silently.
+
 ## [v2.7.0] - 2026-06-28
 
 ### Added

@@ -218,6 +218,49 @@ class DeploymentHelperTests(unittest.TestCase):
         self.assertEqual(settings["dark_apps"].refresh_strategy, et.REFRESH_THEME_BROADCAST)
         self.assertEqual(settings["show_extensions"].refresh_strategy, et.REFRESH_SHELL_NOTIFY)
 
+    def test_windows_version_detects_24h2_and_25h2_builds(self):
+        with patch.object(et.platform, "version", return_value="10.0.26100"):
+            self.assertEqual(et.get_windows_version(), et.OSVersion.WINDOWS_11_24H2)
+        with patch.object(et.platform, "version", return_value="10.0.26200"):
+            self.assertEqual(et.get_windows_version(), et.OSVersion.WINDOWS_11_25H2)
+        with patch.object(et.platform, "version", return_value="10.0.30000"):
+            self.assertEqual(et.get_windows_version(), et.OSVersion.WINDOWS_11_25H2)
+
+    def test_setting_support_gates_pin_25h2_min_max_behavior(self):
+        min_25h2 = et.RegistrySetting(
+            id="future",
+            name="Future",
+            description="Future setting",
+            category="Test",
+            subcategory="Test",
+            reg_path=r"Software\ExplorerTweaks\Test",
+            reg_name="Future",
+            reg_type="DWORD",
+            enable_value=1,
+            disable_value=0,
+            default_value=0,
+            min_os=et.OSVersion.WINDOWS_11_25H2,
+        )
+        max_24h2 = et.RegistrySetting(
+            id="legacy",
+            name="Legacy",
+            description="Legacy setting",
+            category="Test",
+            subcategory="Test",
+            reg_path=r"Software\ExplorerTweaks\Test",
+            reg_name="Legacy",
+            reg_type="DWORD",
+            enable_value=1,
+            disable_value=0,
+            default_value=0,
+            max_os=et.OSVersion.WINDOWS_11_24H2,
+        )
+
+        self.assertFalse(et.is_setting_supported(min_25h2, et.OSVersion.WINDOWS_11_24H2))
+        self.assertTrue(et.is_setting_supported(min_25h2, et.OSVersion.WINDOWS_11_25H2))
+        self.assertTrue(et.is_setting_supported(max_24h2, et.OSVersion.WINDOWS_11_24H2))
+        self.assertFalse(et.is_setting_supported(max_24h2, et.OSVersion.WINDOWS_11_25H2))
+
     def test_restart_explorer_dry_run_reports_explicit_fallback(self):
         original_dry_run = et.DRY_RUN
         et.DRY_RUN = True
