@@ -61,6 +61,25 @@ class BuildRepeatabilityTests(unittest.TestCase):
         self.assertIn("python -m pip install --requirement requirements.txt", icon_generator)
 
 
+class AccessibilityLocalizationTests(unittest.TestCase):
+    def test_gui_message_catalog_contains_required_english_strings(self):
+        catalog = et.GUI_MESSAGES[et.DEFAULT_LOCALE]
+        missing = [key for key in et.REQUIRED_GUI_MESSAGE_KEYS if key not in catalog or not catalog[key]]
+
+        self.assertFalse(missing)
+        self.assertEqual(et.msg("tools.title"), "Tools")
+        self.assertEqual(et.msg("tools.folder_summary", configured=2, total=7), "2/7 folder templates configured.")
+        self.assertEqual(et.msg("access.switch", name="Show File Extensions"), "Show File Extensions toggle")
+
+    def test_compact_layout_and_focus_tokens_are_pinned(self):
+        self.assertLessEqual(et.APP_MIN_WIDTH, 1080)
+        self.assertLessEqual(et.APP_MIN_HEIGHT, 680)
+        self.assertLessEqual(et.PREVIEW_WIDTH, 420)
+        self.assertIn("focus", et.UI)
+        self.assertRegex(et.UI["focus"], r"^#[0-9a-fA-F]{6}$")
+        self.assertLessEqual(et.SETTING_WRAP_LENGTH, 320)
+
+
 class DeploymentHelperTests(unittest.TestCase):
     def setUp(self):
         et.clear_operation_log()

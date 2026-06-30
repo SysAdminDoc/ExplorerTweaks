@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ExplorerTweaks v2.12.0 - Windows File Explorer Configuration Utility
+ExplorerTweaks v2.13.0 - Windows File Explorer Configuration Utility
 Pixel-accurate Windows 11 File Explorer and Taskbar simulation.
 
 Author: SysAdminDoc
@@ -34,9 +34,14 @@ from enum import Enum
 from pathlib import Path
 
 APP_NAME = "ExplorerTweaks"
-APP_VERSION = "2.12.0"
+APP_VERSION = "2.13.0"
 DARKMODE_TASK_NAME = r"\ExplorerTweaks\DarkModeAutoSwitch"
 DARKMODE_SCRIPT_NAME = "darkmode_auto_switch.ps1"
+APP_MIN_WIDTH = 1080
+APP_MIN_HEIGHT = 680
+SIDEBAR_WIDTH = 180
+PREVIEW_WIDTH = 420
+SETTING_WRAP_LENGTH = 300
 
 # Global dry-run flag
 DRY_RUN = False
@@ -55,8 +60,120 @@ UI = {
     "bg": "#0a0a0a", "sidebar": "#0f0f0f", "card": "#161616",
     "hover": "#1f1f1f", "accent": "#1DB954", "accent_hover": "#1ed760",
     "text": "#ffffff", "text_sec": "#b0b0b0", "text_dim": "#707070",
-    "border": "#2a2a2a", "on": "#4ade80", "off": "#f87171",
+    "border": "#2a2a2a", "focus": "#fbbf24", "on": "#4ade80", "off": "#f87171",
 }
+
+DEFAULT_LOCALE = "en"
+GUI_MESSAGES = {
+    "en": {
+        "app.sidebar_title": "{app}",
+        "search.placeholder": "Search settings...",
+        "preview.default": "Preview",
+        "preview.category": "{category} Preview",
+        "operation_log.title": "Operation Log",
+        "status.ready": "Ready.",
+        "status.no_operations": "No operations yet.",
+        "sidebar.refresh_shell": "Refresh Shell",
+        "sidebar.restart": "Restart",
+        "sidebar.export": "Export",
+        "sidebar.import": "Import",
+        "sidebar.export_reg": "Export .reg",
+        "sidebar.presets": "Presets",
+        "sidebar.export_ps1": "Export .ps1",
+        "tools.title": "Tools",
+        "tools.presets": "Presets",
+        "tools.apply": "Apply",
+        "tools.save_preset": "Save Current Settings as Preset...",
+        "tools.send_to": "Send To Folder",
+        "tools.no_send_to": "No Send To entries found.",
+        "tools.remove": "Remove",
+        "tools.recent_items": "Recent Items",
+        "tools.recent_desc": "Clear all recent files, Jump Lists, and destination history.",
+        "tools.wipe_now": "Wipe Now",
+        "tools.photo_viewer": "Photo Viewer",
+        "tools.classic_photo_viewer": "Classic Photo Viewer",
+        "tools.classic_photo_viewer_desc": "Register Windows Photo Viewer for .jpg, .png, .bmp, .gif, .tif, .ico images.",
+        "tools.diff_view": "Diff View",
+        "tools.diff_desc": "Compare current system state against a saved profile or preset.",
+        "tools.diff_vs_file": "Diff vs File...",
+        "tools.diff_vs_preset": "vs {preset}",
+        "tools.folder_views": "Folder Views",
+        "tools.folder_summary": "{configured}/{total} folder templates configured.",
+        "tools.backup_views": "Backup Views",
+        "tools.apply_details": "Apply Details",
+        "tools.restore_views": "Restore Views",
+        "tools.deployment": "Deployment",
+        "tools.deployment_desc": "Export PowerShell deployment scripts, backup bundles, and shell integrations.",
+        "tools.export_ps1": "Export .ps1",
+        "tools.all_users_ps1": "All Users .ps1",
+        "tools.backup_bundle": "Backup Bundle",
+        "tools.restore_bundle": "Restore Bundle",
+        "tools.install_shell_menu": "Install Shell Menu",
+        "tools.remove_shell_menu": "Remove Shell Menu",
+        "tools.menu_inventory": "Menu Inventory",
+        "tools.install_auto_dark": "Install Auto Dark",
+        "tools.remove_auto_dark": "Remove Auto Dark",
+        "win11.classic_context_menu": "Classic Context Menu",
+        "win11.classic_context_menu_desc": "Full Win10 menu.",
+        "win11.classic_photo_viewer_desc": "Register Windows Photo Viewer for images.",
+        "search.title": "Search: \"{query}\"",
+        "search.no_matches": "No matching settings found.",
+        "search.result_count": "{count} result(s)",
+        "search_mode.title": "Taskbar Search",
+        "search_mode.hidden": "Hidden",
+        "search_mode.icon": "Icon",
+        "search_mode.box": "Box",
+        "setting.policy_suffix": " [Locked by Group Policy]",
+        "setting.info_button": " (?)",
+        "dialog.group_policy_lock.title": "Group Policy Lock",
+        "dialog.group_policy_lock.message": "\"{name}\" is managed by Group Policy.\n\nThe change may not persist or take effect. Contact your IT administrator.",
+        "access.button": "{label} button",
+        "access.nav": "{label} navigation button",
+        "access.search": "Search settings field",
+        "access.switch": "{name} toggle",
+        "access.info": "More information for {name}",
+        "access.setting_card": "{name} setting",
+        "access.preview": "Preview panel",
+        "access.operation_log": "Recent operation log",
+    }
+}
+
+REQUIRED_GUI_MESSAGE_KEYS = tuple(GUI_MESSAGES[DEFAULT_LOCALE].keys())
+
+
+def msg(key: str, **kwargs) -> str:
+    text = GUI_MESSAGES.get(DEFAULT_LOCALE, {}).get(key, key)
+    return text.format(**kwargs) if kwargs else text
+
+
+def make_accessible(widget, label: str, role: str = "control", outline: bool = False):
+    widget.accessible_label = label
+    widget.accessible_role = role
+    try:
+        widget.configure(takefocus=1)
+    except Exception:
+        pass
+    if outline:
+        bind_focus_outline(widget)
+    return widget
+
+
+def bind_focus_outline(widget, normal_color: str = UI["border"], focus_color: str = UI["focus"]):
+    widget._focus_normal_border = normal_color
+
+    def set_border(color, width):
+        try:
+            widget.configure(border_color=color, border_width=width)
+        except Exception:
+            pass
+
+    try:
+        widget.bind("<FocusIn>", lambda _event: set_border(focus_color, 2), add="+")
+        widget.bind("<FocusOut>", lambda _event: set_border(widget._focus_normal_border, 1), add="+")
+    except TypeError:
+        widget.bind("<FocusIn>", lambda _event: set_border(focus_color, 2))
+        widget.bind("<FocusOut>", lambda _event: set_border(widget._focus_normal_border, 1))
+    return widget
 
 # Windows 11 Explorer Colors (Dark)
 EXP_DARK = {
@@ -3721,10 +3838,11 @@ class Windows11Preview(BasePreview):
 
 class SettingCard(ctk.CTkFrame):
     def __init__(self, parent, setting: RegistrySetting, on_change: Callable = None):
-        super().__init__(parent, fg_color=UI["card"], corner_radius=8)
+        super().__init__(parent, fg_color=UI["card"], corner_radius=8, border_width=1, border_color=UI["border"])
         self.setting, self.on_change = setting, on_change
         self._policy_locked = is_setting_policy_locked(setting)
         self.grid_columnconfigure(0, weight=1)
+        make_accessible(self, msg("access.setting_card", name=setting.name), "group", outline=True)
 
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=12, pady=(10, 2))
@@ -3738,18 +3856,20 @@ class SettingCard(ctk.CTkFrame):
         if self._policy_locked:
             ctk.CTkLabel(nf, text=" (GP)", font=ctk.CTkFont(size=9), text_color="#ff9800").pack(side="left")
         if setting.info:
-            info_btn = ctk.CTkLabel(nf, text=" (?)", font=ctk.CTkFont(size=9), text_color=UI["accent"], cursor="hand2")
+            info_btn = ctk.CTkLabel(nf, text=msg("setting.info_button"), font=ctk.CTkFont(size=9), text_color=UI["accent"], cursor="hand2")
+            make_accessible(info_btn, msg("access.info", name=setting.name), "button")
             info_btn.pack(side="left")
             info_btn.bind("<Button-1>", lambda e: self._show_info())
 
         self.switch_var = ctk.BooleanVar()
         self.switch = ctk.CTkSwitch(header, text="", variable=self.switch_var, command=self._toggle, width=40, height=20, switch_width=36, switch_height=18, progress_color=UI["accent"], button_color="#fff", fg_color=UI["hover"])
+        make_accessible(self.switch, msg("access.switch", name=setting.name), "switch", outline=True)
         self.switch.grid(row=0, column=1, sticky="e")
 
         desc_text = setting.description
         if self._policy_locked:
-            desc_text += " [Locked by Group Policy]"
-        ctk.CTkLabel(self, text=desc_text, font=ctk.CTkFont(size=10), text_color="#ff9800" if self._policy_locked else UI["text_sec"], wraplength=320, justify="left", anchor="w").grid(row=1, column=0, sticky="w", padx=12, pady=(0, 2))
+            desc_text += msg("setting.policy_suffix")
+        ctk.CTkLabel(self, text=desc_text, font=ctk.CTkFont(size=10), text_color="#ff9800" if self._policy_locked else UI["text_sec"], wraplength=SETTING_WRAP_LENGTH, justify="left", anchor="w").grid(row=1, column=0, sticky="w", padx=12, pady=(0, 2))
 
         # Info text area (hidden by default)
         self.info_label = None
@@ -3773,7 +3893,7 @@ class SettingCard(ctk.CTkFrame):
             self.info_label = ctk.CTkLabel(
                 self, text=self.setting.info,
                 font=ctk.CTkFont(size=9, slant="italic"),
-                text_color=UI["accent"], wraplength=310, justify="left", anchor="w"
+                text_color=UI["accent"], wraplength=SETTING_WRAP_LENGTH, justify="left", anchor="w"
             )
             self.info_label.grid(row=2, column=0, sticky="w", padx=12, pady=(2, 4))
             self._info_visible = True
@@ -3787,9 +3907,8 @@ class SettingCard(ctk.CTkFrame):
     def _toggle(self):
         if self._policy_locked:
             messagebox.showwarning(
-                "Group Policy Lock",
-                f'"{self.setting.name}" is managed by Group Policy.\n\n'
-                "The change may not persist or take effect. Contact your IT administrator."
+                msg("dialog.group_policy_lock.title"),
+                msg("dialog.group_policy_lock.message", name=self.setting.name)
             )
         enabled = self.switch_var.get()
         val = self.setting.enable_value if enabled else self.setting.disable_value
@@ -3799,9 +3918,10 @@ class SettingCard(ctk.CTkFrame):
 
 class SpecialCard(ctk.CTkFrame):
     def __init__(self, parent, name, desc, get_fn, set_fn, on_change=None, preview_key=None):
-        super().__init__(parent, fg_color=UI["card"], corner_radius=8)
+        super().__init__(parent, fg_color=UI["card"], corner_radius=8, border_width=1, border_color=UI["border"])
         self.get_fn, self.set_fn, self.on_change, self.preview_key = get_fn, set_fn, on_change, preview_key
         self.grid_columnconfigure(0, weight=1)
+        make_accessible(self, msg("access.setting_card", name=name), "group", outline=True)
         
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=12, pady=(10, 2))
@@ -3811,9 +3931,10 @@ class SpecialCard(ctk.CTkFrame):
         
         self.switch_var = ctk.BooleanVar(value=self.get_fn())
         self.switch = ctk.CTkSwitch(header, text="", variable=self.switch_var, command=self._toggle, width=40, height=20, switch_width=36, switch_height=18, progress_color=UI["accent"], button_color="#fff", fg_color=UI["hover"])
+        make_accessible(self.switch, msg("access.switch", name=name), "switch", outline=True)
         self.switch.grid(row=0, column=1, sticky="e")
         
-        ctk.CTkLabel(self, text=desc, font=ctk.CTkFont(size=10), text_color=UI["text_sec"], wraplength=320, justify="left", anchor="w").grid(row=1, column=0, sticky="w", padx=12, pady=(0, 10))
+        ctk.CTkLabel(self, text=desc, font=ctk.CTkFont(size=10), text_color=UI["text_sec"], wraplength=SETTING_WRAP_LENGTH, justify="left", anchor="w").grid(row=1, column=0, sticky="w", padx=12, pady=(0, 10))
     
     def _toggle(self):
         self.set_fn(self.switch_var.get())
@@ -3822,17 +3943,20 @@ class SpecialCard(ctk.CTkFrame):
 
 class SearchModeCard(ctk.CTkFrame):
     def __init__(self, parent, on_change=None):
-        super().__init__(parent, fg_color=UI["card"], corner_radius=8)
+        super().__init__(parent, fg_color=UI["card"], corner_radius=8, border_width=1, border_color=UI["border"])
         self.on_change = on_change
         self.grid_columnconfigure(0, weight=1)
+        make_accessible(self, msg("search_mode.title"), "radiogroup", outline=True)
         
-        ctk.CTkLabel(self, text="Taskbar Search", font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["text"]).grid(row=0, column=0, sticky="w", padx=12, pady=(10, 4))
+        ctk.CTkLabel(self, text=msg("search_mode.title"), font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["text"]).grid(row=0, column=0, sticky="w", padx=12, pady=(10, 4))
         
         rf = ctk.CTkFrame(self, fg_color="transparent")
         rf.grid(row=1, column=0, sticky="w", padx=12, pady=(0, 10))
         self.mode_var = ctk.IntVar(value=SpecialSettings.get_search_mode())
-        for v, t in [(0, "Hidden"), (1, "Icon"), (2, "Box")]:
-            ctk.CTkRadioButton(rf, text=t, variable=self.mode_var, value=v, command=self._change, font=ctk.CTkFont(size=10), text_color=UI["text_sec"], fg_color=UI["accent"]).pack(side="left", padx=(0, 10))
+        for v, t in [(0, msg("search_mode.hidden")), (1, msg("search_mode.icon")), (2, msg("search_mode.box"))]:
+            radio = ctk.CTkRadioButton(rf, text=t, variable=self.mode_var, value=v, command=self._change, font=ctk.CTkFont(size=10), text_color=UI["text_sec"], fg_color=UI["accent"])
+            make_accessible(radio, msg("access.button", label=f"{msg('search_mode.title')} {t}"), "radio")
+            radio.pack(side="left", padx=(0, 10))
     
     def _change(self):
         SpecialSettings.set_search_mode(self.mode_var.get())
@@ -3842,11 +3966,16 @@ class SearchModeCard(ctk.CTkFrame):
 class NavButton(ctk.CTkButton):
     def __init__(self, parent, text, emoji, command, selected=False):
         self.selected = selected
-        super().__init__(parent, text=f"{emoji}  {text}", command=command, font=ctk.CTkFont(size=11), text_color=UI["text"] if selected else UI["text_sec"], fg_color=UI["hover"] if selected else "transparent", hover_color=UI["hover"], anchor="w", height=32, corner_radius=6)
+        self._normal_border = UI["hover"] if selected else UI["sidebar"]
+        super().__init__(parent, text=f"{emoji}  {text}", command=command, font=ctk.CTkFont(size=11), text_color=UI["text"] if selected else UI["text_sec"], fg_color=UI["hover"] if selected else "transparent", hover_color=UI["hover"], anchor="w", height=32, corner_radius=6, border_width=1, border_color=self._normal_border)
+        make_accessible(self, msg("access.nav", label=text), "navigation button", outline=True)
+        self._focus_normal_border = self._normal_border
     
     def set_selected(self, selected):
         self.selected = selected
-        self.configure(text_color=UI["text"] if selected else UI["text_sec"], fg_color=UI["hover"] if selected else "transparent")
+        self._normal_border = UI["hover"] if selected else UI["sidebar"]
+        self._focus_normal_border = self._normal_border
+        self.configure(text_color=UI["text"] if selected else UI["text_sec"], fg_color=UI["hover"] if selected else "transparent", border_color=self._normal_border)
 
 
 # ============================================================================
@@ -3858,7 +3987,7 @@ class App(ctk.CTk):
         super().__init__()
         self.title(f"{APP_NAME} v{APP_VERSION}")
         self.geometry("1500x850")
-        self.minsize(1300, 750)
+        self.minsize(APP_MIN_WIDTH, APP_MIN_HEIGHT)
         self.configure(fg_color=UI["bg"])
         
         self.os_version = get_windows_version()
@@ -3875,6 +4004,29 @@ class App(ctk.CTk):
         self._build_ui()
         self._create_previews()
         if self.current_cat: self._show_category(self.current_cat)
+
+    def _button(self, parent, text_key: Optional[str] = None, command=None, text: Optional[str] = None, **kwargs):
+        label = text if text is not None else msg(text_key)
+        button = ctk.CTkButton(parent, text=label, command=command, **kwargs)
+        return make_accessible(button, msg("access.button", label=label), "button", outline=True)
+
+    def _grid_buttons(self, parent, button_specs: List[Dict[str, Any]], columns: int = 2, common: Optional[Dict[str, Any]] = None):
+        for col in range(columns):
+            parent.grid_columnconfigure(col, weight=1, uniform="button_grid")
+        for index, spec in enumerate(button_specs):
+            row, col = divmod(index, columns)
+            kwargs = dict(common or {})
+            kwargs.update(spec.get("kwargs", {}))
+            button = self._button(
+                parent,
+                spec.get("key"),
+                text=spec.get("text"),
+                command=spec.get("command"),
+                **kwargs,
+            )
+            padx = (0, 3) if col == 0 else (3, 0)
+            pady = (0, 0) if row == 0 else (6, 0)
+            button.grid(row=row, column=col, sticky="ew", padx=padx, pady=pady)
 
     def _resolve_focus(self, focus: Optional[str]) -> Optional[str]:
         if not focus:
@@ -3961,16 +4113,16 @@ class App(ctk.CTk):
         return cats
     
     def _build_ui(self):
-        self.grid_columnconfigure(0, weight=0, minsize=180)
-        self.grid_columnconfigure(1, weight=1, minsize=400)
-        self.grid_columnconfigure(2, weight=0, minsize=480)
+        self.grid_columnconfigure(0, weight=0, minsize=SIDEBAR_WIDTH)
+        self.grid_columnconfigure(1, weight=1, minsize=360)
+        self.grid_columnconfigure(2, weight=0, minsize=PREVIEW_WIDTH)
         self.grid_rowconfigure(0, weight=1)
         self._build_sidebar()
         self._build_settings()
         self._build_preview()
     
     def _build_sidebar(self):
-        sidebar = ctk.CTkFrame(self, fg_color=UI["sidebar"], width=180, corner_radius=0)
+        sidebar = ctk.CTkFrame(self, fg_color=UI["sidebar"], width=SIDEBAR_WIDTH, corner_radius=0)
         sidebar.grid(row=0, column=0, sticky="nsew")
         sidebar.grid_propagate(False)
 
@@ -3981,12 +4133,13 @@ class App(ctk.CTk):
         self.search_var = ctk.StringVar()
         self.search_var.trace_add("write", self._on_search)
         self.search_entry = ctk.CTkEntry(
-            sidebar, placeholder_text="Search settings...",
+            sidebar, placeholder_text=msg("search.placeholder"),
             textvariable=self.search_var,
             font=ctk.CTkFont(size=10), height=28,
             fg_color=UI["hover"], border_color=UI["border"],
             text_color=UI["text"], placeholder_text_color=UI["text_dim"]
         )
+        make_accessible(self.search_entry, msg("access.search"), "search")
         self.search_entry.pack(fill="x", padx=10, pady=(8, 4))
 
         ctk.CTkFrame(sidebar, fg_color=UI["border"], height=1).pack(fill="x", padx=12, pady=6)
@@ -4011,22 +4164,22 @@ class App(ctk.CTk):
         bottom.pack(fill="x", side="bottom", padx=8, pady=12)
         shell_row = ctk.CTkFrame(bottom, fg_color="transparent")
         shell_row.pack(fill="x", pady=(0, 6))
-        ctk.CTkButton(shell_row, text="Refresh Shell", command=self._refresh_shell, font=ctk.CTkFont(size=10, weight="bold"), fg_color=UI["accent"], hover_color=UI["accent_hover"], height=30, corner_radius=6).pack(side="left", expand=True, fill="x", padx=(0, 3))
-        ctk.CTkButton(shell_row, text="Restart", command=self._restart, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=30, corner_radius=6).pack(side="left", expand=True, fill="x", padx=(3, 0))
+        self._button(shell_row, "sidebar.refresh_shell", command=self._refresh_shell, font=ctk.CTkFont(size=10, weight="bold"), fg_color=UI["accent"], hover_color=UI["accent_hover"], height=30, corner_radius=6).pack(side="left", expand=True, fill="x", padx=(0, 3))
+        self._button(shell_row, "sidebar.restart", command=self._restart, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=30, corner_radius=6).pack(side="left", expand=True, fill="x", padx=(3, 0))
 
         br = ctk.CTkFrame(bottom, fg_color="transparent")
         br.pack(fill="x")
-        ctk.CTkButton(br, text="Export", command=self._export, font=ctk.CTkFont(size=9), fg_color=UI["hover"], hover_color=UI["border"], height=26, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(0, 2))
-        ctk.CTkButton(br, text="Import", command=self._import, font=ctk.CTkFont(size=9), fg_color=UI["hover"], hover_color=UI["border"], height=26, corner_radius=4).pack(side="right", expand=True, fill="x", padx=(2, 0))
+        self._button(br, "sidebar.export", command=self._export, font=ctk.CTkFont(size=9), fg_color=UI["hover"], hover_color=UI["border"], height=26, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(0, 2))
+        self._button(br, "sidebar.import", command=self._import, font=ctk.CTkFont(size=9), fg_color=UI["hover"], hover_color=UI["border"], height=26, corner_radius=4).pack(side="right", expand=True, fill="x", padx=(2, 0))
 
         br2 = ctk.CTkFrame(bottom, fg_color="transparent")
         br2.pack(fill="x", pady=(4, 0))
-        ctk.CTkButton(br2, text="Export .reg", command=self._export_reg, font=ctk.CTkFont(size=9), fg_color=UI["hover"], hover_color=UI["border"], height=26, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(0, 2))
-        ctk.CTkButton(br2, text="Presets", command=self._show_presets, font=ctk.CTkFont(size=9), fg_color=UI["hover"], hover_color=UI["border"], height=26, corner_radius=4).pack(side="right", expand=True, fill="x", padx=(2, 0))
+        self._button(br2, "sidebar.export_reg", command=self._export_reg, font=ctk.CTkFont(size=9), fg_color=UI["hover"], hover_color=UI["border"], height=26, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(0, 2))
+        self._button(br2, "sidebar.presets", command=self._show_presets, font=ctk.CTkFont(size=9), fg_color=UI["hover"], hover_color=UI["border"], height=26, corner_radius=4).pack(side="right", expand=True, fill="x", padx=(2, 0))
 
         br3 = ctk.CTkFrame(bottom, fg_color="transparent")
         br3.pack(fill="x", pady=(4, 0))
-        ctk.CTkButton(br3, text="Export .ps1", command=self._export_ps1, font=ctk.CTkFont(size=9), fg_color=UI["hover"], hover_color=UI["border"], height=26, corner_radius=4).pack(fill="x")
+        self._button(br3, "sidebar.export_ps1", command=self._export_ps1, font=ctk.CTkFont(size=9), fg_color=UI["hover"], hover_color=UI["border"], height=26, corner_radius=4).pack(fill="x")
     
     def _build_settings(self):
         self.settings_panel = ctk.CTkFrame(self, fg_color=UI["bg"], corner_radius=0)
@@ -4042,14 +4195,15 @@ class App(ctk.CTk):
         self.scroll.grid_columnconfigure(0, weight=1)
     
     def _build_preview(self):
-        self.preview_panel = ctk.CTkFrame(self, fg_color=UI["sidebar"], width=480, corner_radius=0)
+        self.preview_panel = ctk.CTkFrame(self, fg_color=UI["sidebar"], width=PREVIEW_WIDTH, corner_radius=0)
         self.preview_panel.grid(row=0, column=2, sticky="nsew")
         self.preview_panel.grid_propagate(False)
         self.preview_panel.grid_columnconfigure(0, weight=1)
         self.preview_panel.grid_rowconfigure(1, weight=0)
         self.preview_panel.grid_rowconfigure(2, weight=1)
         
-        self.preview_title = ctk.CTkLabel(self.preview_panel, text="👁 Preview", font=ctk.CTkFont(size=13, weight="bold"), text_color=UI["text"])
+        self.preview_title = ctk.CTkLabel(self.preview_panel, text=f"👁 {msg('preview.default')}", font=ctk.CTkFont(size=13, weight="bold"), text_color=UI["text"])
+        make_accessible(self.preview_title, msg("access.preview"), "heading")
         self.preview_title.grid(row=0, column=0, sticky="w", padx=12, pady=(12, 4))
         self._build_operation_log()
         
@@ -4066,8 +4220,8 @@ class App(ctk.CTk):
         header = ctk.CTkFrame(self.log_panel, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=10, pady=(8, 2))
         header.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(header, text="Operation Log", font=ctk.CTkFont(size=11, weight="bold"), text_color=UI["text"]).grid(row=0, column=0, sticky="w")
-        self.operation_status = ctk.CTkLabel(header, text="Ready", font=ctk.CTkFont(size=9), text_color=UI["text_dim"])
+        ctk.CTkLabel(header, text=msg("operation_log.title"), font=ctk.CTkFont(size=11, weight="bold"), text_color=UI["text"]).grid(row=0, column=0, sticky="w")
+        self.operation_status = ctk.CTkLabel(header, text=msg("status.ready").rstrip("."), font=ctk.CTkFont(size=9), text_color=UI["text_dim"])
         self.operation_status.grid(row=0, column=1, sticky="e")
 
         self.operation_log_box = ctk.CTkTextbox(
@@ -4081,8 +4235,9 @@ class App(ctk.CTk):
             wrap="word",
         )
         self.operation_log_box.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
+        make_accessible(self.operation_log_box, msg("access.operation_log"), "log")
         self.operation_log_box.configure(state="disabled")
-        self._set_status("Ready.")
+        self._set_status(msg("status.ready"))
 
     def _set_status(self, message: str, status: str = "info"):
         log_operation("gui_status", status, message)
@@ -4092,7 +4247,7 @@ class App(ctk.CTk):
         if not hasattr(self, "operation_log_box"):
             return
         events = OPERATION_LOG[-6:]
-        latest = events[-1]["message"] if events else "Ready."
+        latest = events[-1]["message"] if events else msg("status.ready")
         self.operation_status.configure(text=latest[:42])
         lines = []
         for event in events:
@@ -4103,7 +4258,7 @@ class App(ctk.CTk):
             lines.append(f"{stamp} {level} {action}: {message}")
         self.operation_log_box.configure(state="normal")
         self.operation_log_box.delete("1.0", "end")
-        self.operation_log_box.insert("1.0", "\n".join(lines) if lines else "No operations yet.")
+        self.operation_log_box.insert("1.0", "\n".join(lines) if lines else msg("status.no_operations"))
         self.operation_log_box.configure(state="disabled")
     
     def _create_previews(self):
@@ -4124,7 +4279,7 @@ class App(ctk.CTk):
     def _show_category(self, cat):
         self.current_cat = cat
         self.header.configure(text=cat)
-        self.preview_title.configure(text=f"👁 {cat} Preview")
+        self.preview_title.configure(text=f"👁 {msg('preview.category', category=cat)}")
 
         for w in self.scroll.winfo_children(): w.destroy()
         row = 0
@@ -4144,11 +4299,11 @@ class App(ctk.CTk):
             return
 
         if cat == "Windows 11" and self.os_version != OSVersion.WINDOWS_10:
-            SpecialCard(self.scroll, "Classic Context Menu", "Full Win10 menu.", SpecialSettings.get_classic_context_menu, SpecialSettings.set_classic_context_menu, self._on_change, "classic_context_menu").grid(row=row, column=0, sticky="ew", pady=(0, 4))
+            SpecialCard(self.scroll, msg("win11.classic_context_menu"), msg("win11.classic_context_menu_desc"), SpecialSettings.get_classic_context_menu, SpecialSettings.set_classic_context_menu, self._on_change, "classic_context_menu").grid(row=row, column=0, sticky="ew", pady=(0, 4))
             row += 1
 
             # Photo Viewer toggle
-            SpecialCard(self.scroll, "Classic Photo Viewer", "Register Windows Photo Viewer for images.", is_photo_viewer_registered, set_photo_viewer, self._on_change, None).grid(row=row, column=0, sticky="ew", pady=(0, 4))
+            SpecialCard(self.scroll, msg("tools.classic_photo_viewer"), msg("win11.classic_photo_viewer_desc"), is_photo_viewer_registered, set_photo_viewer, self._on_change, None).grid(row=row, column=0, sticky="ew", pady=(0, 4))
             row += 1
 
         if cat == "Taskbar":
@@ -4237,7 +4392,7 @@ class App(ctk.CTk):
 
     def _render_search_results(self):
         query = self.search_var.get().strip()
-        self.header.configure(text=f'Search: "{query}"')
+        self.header.configure(text=msg("search.title", query=query))
 
         row = 0
         matches = []
@@ -4249,10 +4404,10 @@ class App(ctk.CTk):
                 matches.append(s)
 
         if not matches:
-            ctk.CTkLabel(self.scroll, text="No matching settings found.", font=ctk.CTkFont(size=12), text_color=UI["text_dim"]).grid(row=0, column=0, pady=20)
+            ctk.CTkLabel(self.scroll, text=msg("search.no_matches"), font=ctk.CTkFont(size=12), text_color=UI["text_dim"]).grid(row=0, column=0, pady=20)
             return
 
-        ctk.CTkLabel(self.scroll, text=f"{len(matches)} result(s)", font=ctk.CTkFont(size=10), text_color=UI["text_dim"]).grid(row=row, column=0, sticky="w", pady=(0, 6))
+        ctk.CTkLabel(self.scroll, text=msg("search.result_count", count=len(matches)), font=ctk.CTkFont(size=10), text_color=UI["text_dim"]).grid(row=row, column=0, sticky="w", pady=(0, 6))
         row += 1
 
         for s in matches:
@@ -4265,11 +4420,11 @@ class App(ctk.CTk):
     # ================================================================
 
     def _render_tools_page(self):
-        self.header.configure(text="Tools")
+        self.header.configure(text=msg("tools.title"))
         row = 0
 
         # --- Presets section ---
-        ctk.CTkLabel(self.scroll, text="Presets", font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["accent"]).grid(row=row, column=0, sticky="w", pady=(0, 6))
+        ctk.CTkLabel(self.scroll, text=msg("tools.presets"), font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["accent"]).grid(row=row, column=0, sticky="w", pady=(0, 6))
         row += 1
 
         for name, preset in BUILTIN_PRESETS.items():
@@ -4282,19 +4437,19 @@ class App(ctk.CTk):
             hdr.grid_columnconfigure(0, weight=1)
 
             ctk.CTkLabel(hdr, text=name, font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["text"]).grid(row=0, column=0, sticky="w")
-            ctk.CTkButton(hdr, text="Apply", command=lambda n=name: self._apply_preset(n), font=ctk.CTkFont(size=10, weight="bold"), fg_color=UI["accent"], hover_color=UI["accent_hover"], width=60, height=26, corner_radius=4).grid(row=0, column=1, sticky="e")
+            self._button(hdr, "tools.apply", command=lambda n=name: self._apply_preset(n), font=ctk.CTkFont(size=10, weight="bold"), fg_color=UI["accent"], hover_color=UI["accent_hover"], width=60, height=26, corner_radius=4).grid(row=0, column=1, sticky="e")
 
-            ctk.CTkLabel(pf, text=preset["description"], font=ctk.CTkFont(size=10), text_color=UI["text_sec"], wraplength=320, justify="left", anchor="w").pack(anchor="w", padx=12, pady=(0, 10))
+            ctk.CTkLabel(pf, text=preset["description"], font=ctk.CTkFont(size=10), text_color=UI["text_sec"], wraplength=SETTING_WRAP_LENGTH, justify="left", anchor="w").pack(anchor="w", padx=12, pady=(0, 10))
             row += 1
 
         # Save current as preset
         save_f = ctk.CTkFrame(self.scroll, fg_color=UI["card"], corner_radius=8)
         save_f.grid(row=row, column=0, sticky="ew", pady=(0, 4))
-        ctk.CTkButton(save_f, text="Save Current Settings as Preset...", command=self._save_preset_dialog, font=ctk.CTkFont(size=11), fg_color=UI["hover"], hover_color=UI["border"], height=32, corner_radius=4).pack(fill="x", padx=12, pady=10)
+        self._button(save_f, "tools.save_preset", command=self._save_preset_dialog, font=ctk.CTkFont(size=11), fg_color=UI["hover"], hover_color=UI["border"], height=32, corner_radius=4).pack(fill="x", padx=12, pady=10)
         row += 1
 
         # --- Send To Manager ---
-        ctk.CTkLabel(self.scroll, text="Send To Folder", font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["accent"]).grid(row=row, column=0, sticky="w", pady=(12, 6))
+        ctk.CTkLabel(self.scroll, text=msg("tools.send_to"), font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["accent"]).grid(row=row, column=0, sticky="w", pady=(12, 6))
         row += 1
 
         entries = get_sendto_entries()
@@ -4310,14 +4465,14 @@ class App(ctk.CTk):
 
                 icon = "🔗" if entry["is_link"] else "📄"
                 ctk.CTkLabel(inner, text=f"{icon} {entry['name']}", font=ctk.CTkFont(size=10), text_color=UI["text"], anchor="w").grid(row=0, column=0, sticky="w")
-                ctk.CTkButton(inner, text="Remove", command=lambda p=entry["path"]: self._remove_sendto(p), font=ctk.CTkFont(size=9), fg_color=UI["off"], hover_color="#d32f2f", width=55, height=22, corner_radius=3).grid(row=0, column=1, sticky="e")
+                self._button(inner, "tools.remove", command=lambda p=entry["path"]: self._remove_sendto(p), font=ctk.CTkFont(size=9), fg_color=UI["off"], hover_color="#d32f2f", width=55, height=22, corner_radius=3).grid(row=0, column=1, sticky="e")
                 row += 1
         else:
-            ctk.CTkLabel(self.scroll, text="No Send To entries found.", font=ctk.CTkFont(size=10), text_color=UI["text_dim"]).grid(row=row, column=0, sticky="w", pady=4)
+            ctk.CTkLabel(self.scroll, text=msg("tools.no_send_to"), font=ctk.CTkFont(size=10), text_color=UI["text_dim"]).grid(row=row, column=0, sticky="w", pady=4)
             row += 1
 
         # --- Recent Items Wipe ---
-        ctk.CTkLabel(self.scroll, text="Recent Items", font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["accent"]).grid(row=row, column=0, sticky="w", pady=(12, 6))
+        ctk.CTkLabel(self.scroll, text=msg("tools.recent_items"), font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["accent"]).grid(row=row, column=0, sticky="w", pady=(12, 6))
         row += 1
 
         wipe_f = ctk.CTkFrame(self.scroll, fg_color=UI["card"], corner_radius=8)
@@ -4327,19 +4482,19 @@ class App(ctk.CTk):
         wipe_inner.pack(fill="x", padx=12, pady=10)
         wipe_inner.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(wipe_inner, text="Clear all recent files, Jump Lists, and destination history.", font=ctk.CTkFont(size=10), text_color=UI["text_sec"], anchor="w").grid(row=0, column=0, sticky="w")
-        ctk.CTkButton(wipe_inner, text="Wipe Now", command=self._wipe_recent, font=ctk.CTkFont(size=10, weight="bold"), fg_color=UI["off"], hover_color="#d32f2f", width=80, height=28, corner_radius=4).grid(row=0, column=1, sticky="e", padx=(8, 0))
+        ctk.CTkLabel(wipe_inner, text=msg("tools.recent_desc"), font=ctk.CTkFont(size=10), text_color=UI["text_sec"], anchor="w", wraplength=SETTING_WRAP_LENGTH, justify="left").grid(row=0, column=0, sticky="ew")
+        self._button(wipe_inner, "tools.wipe_now", command=self._wipe_recent, font=ctk.CTkFont(size=10, weight="bold"), fg_color=UI["off"], hover_color="#d32f2f", height=28, corner_radius=4).grid(row=1, column=0, sticky="ew", pady=(8, 0))
         row += 1
 
         # --- Classic Photo Viewer ---
-        ctk.CTkLabel(self.scroll, text="Photo Viewer", font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["accent"]).grid(row=row, column=0, sticky="w", pady=(12, 6))
+        ctk.CTkLabel(self.scroll, text=msg("tools.photo_viewer"), font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["accent"]).grid(row=row, column=0, sticky="w", pady=(12, 6))
         row += 1
 
-        SpecialCard(self.scroll, "Classic Photo Viewer", "Register Windows Photo Viewer for .jpg, .png, .bmp, .gif, .tif, .ico images.", is_photo_viewer_registered, set_photo_viewer, self._on_change, None).grid(row=row, column=0, sticky="ew", pady=(0, 4))
+        SpecialCard(self.scroll, msg("tools.classic_photo_viewer"), msg("tools.classic_photo_viewer_desc"), is_photo_viewer_registered, set_photo_viewer, self._on_change, None).grid(row=row, column=0, sticky="ew", pady=(0, 4))
         row += 1
 
         # --- Diff View ---
-        ctk.CTkLabel(self.scroll, text="Diff View", font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["accent"]).grid(row=row, column=0, sticky="w", pady=(12, 6))
+        ctk.CTkLabel(self.scroll, text=msg("tools.diff_view"), font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["accent"]).grid(row=row, column=0, sticky="w", pady=(12, 6))
         row += 1
 
         diff_f = ctk.CTkFrame(self.scroll, fg_color=UI["card"], corner_radius=8)
@@ -4349,17 +4504,20 @@ class App(ctk.CTk):
         diff_inner.pack(fill="x", padx=12, pady=10)
         diff_inner.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(diff_inner, text="Compare current system state against a saved profile or preset.", font=ctk.CTkFont(size=10), text_color=UI["text_sec"], anchor="w").grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(diff_inner, text=msg("tools.diff_desc"), font=ctk.CTkFont(size=10), text_color=UI["text_sec"], anchor="w").grid(row=0, column=0, sticky="w")
 
         diff_btns = ctk.CTkFrame(diff_inner, fg_color="transparent")
         diff_btns.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 0))
-        ctk.CTkButton(diff_btns, text="Diff vs File...", command=self._diff_vs_file, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=28, corner_radius=4).pack(side="left", padx=(0, 4))
-        for pname in BUILTIN_PRESETS:
-            ctk.CTkButton(diff_btns, text=f"vs {pname}", command=lambda n=pname: self._diff_vs_preset(n), font=ctk.CTkFont(size=9), fg_color=UI["hover"], hover_color=UI["border"], height=26, corner_radius=4).pack(side="left", padx=2)
+        diff_specs = [{"key": "tools.diff_vs_file", "command": self._diff_vs_file}]
+        diff_specs.extend(
+            {"text": msg("tools.diff_vs_preset", preset=pname), "command": lambda n=pname: self._diff_vs_preset(n)}
+            for pname in BUILTIN_PRESETS
+        )
+        self._grid_buttons(diff_btns, diff_specs, columns=2, common={"font": ctk.CTkFont(size=9), "fg_color": UI["hover"], "hover_color": UI["border"], "height": 28, "corner_radius": 4})
         row += 1
 
         # --- Folder Views ---
-        ctk.CTkLabel(self.scroll, text="Folder Views", font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["accent"]).grid(row=row, column=0, sticky="w", pady=(12, 6))
+        ctk.CTkLabel(self.scroll, text=msg("tools.folder_views"), font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["accent"]).grid(row=row, column=0, sticky="w", pady=(12, 6))
         row += 1
 
         folder_f = ctk.CTkFrame(self.scroll, fg_color=UI["card"], corner_radius=8)
@@ -4369,17 +4527,24 @@ class App(ctk.CTk):
         folder_inner = ctk.CTkFrame(folder_f, fg_color="transparent")
         folder_inner.pack(fill="x", padx=12, pady=10)
         configured = sum(1 for item in folder_view_defaults_preview() if item["configured"])
-        ctk.CTkLabel(folder_inner, text=f"{configured}/{len(folder_view_template_paths())} folder templates configured.", font=ctk.CTkFont(size=10), text_color=UI["text_sec"], anchor="w").pack(anchor="w", pady=(0, 8))
+        ctk.CTkLabel(folder_inner, text=msg("tools.folder_summary", configured=configured, total=len(folder_view_template_paths())), font=ctk.CTkFont(size=10), text_color=UI["text_sec"], anchor="w").pack(anchor="w", pady=(0, 8))
 
         folder_btns = ctk.CTkFrame(folder_inner, fg_color="transparent")
         folder_btns.pack(fill="x")
-        ctk.CTkButton(folder_btns, text="Backup Views", command=self._backup_folder_views, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=28, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(0, 3))
-        ctk.CTkButton(folder_btns, text="Apply Details", command=lambda: self._apply_folder_view_preset("details"), font=ctk.CTkFont(size=10, weight="bold"), fg_color=UI["accent"], hover_color=UI["accent_hover"], height=28, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(3, 3))
-        ctk.CTkButton(folder_btns, text="Restore Views", command=self._restore_folder_views, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=28, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(3, 0))
+        self._grid_buttons(
+            folder_btns,
+            [
+                {"key": "tools.backup_views", "command": self._backup_folder_views},
+                {"key": "tools.apply_details", "command": lambda: self._apply_folder_view_preset("details"), "kwargs": {"font": ctk.CTkFont(size=10, weight="bold"), "fg_color": UI["accent"], "hover_color": UI["accent_hover"]}},
+                {"key": "tools.restore_views", "command": self._restore_folder_views},
+            ],
+            columns=2,
+            common={"font": ctk.CTkFont(size=10), "fg_color": UI["hover"], "hover_color": UI["border"], "height": 28, "corner_radius": 4},
+        )
         row += 1
 
         # --- Deployment ---
-        ctk.CTkLabel(self.scroll, text="Deployment", font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["accent"]).grid(row=row, column=0, sticky="w", pady=(12, 6))
+        ctk.CTkLabel(self.scroll, text=msg("tools.deployment"), font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["accent"]).grid(row=row, column=0, sticky="w", pady=(12, 6))
         row += 1
 
         deploy_f = ctk.CTkFrame(self.scroll, fg_color=UI["card"], corner_radius=8)
@@ -4388,25 +4553,46 @@ class App(ctk.CTk):
 
         deploy_inner = ctk.CTkFrame(deploy_f, fg_color="transparent")
         deploy_inner.pack(fill="x", padx=12, pady=10)
-        ctk.CTkLabel(deploy_inner, text="Export PowerShell deployment scripts, backup bundles, and shell integrations.", font=ctk.CTkFont(size=10), text_color=UI["text_sec"], anchor="w", wraplength=350, justify="left").pack(anchor="w", pady=(0, 8))
+        ctk.CTkLabel(deploy_inner, text=msg("tools.deployment_desc"), font=ctk.CTkFont(size=10), text_color=UI["text_sec"], anchor="w", wraplength=SETTING_WRAP_LENGTH, justify="left").pack(anchor="w", pady=(0, 8))
 
         deploy_btns = ctk.CTkFrame(deploy_inner, fg_color="transparent")
         deploy_btns.pack(fill="x")
-        ctk.CTkButton(deploy_btns, text="Export .ps1", command=self._export_ps1, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=28, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(0, 3))
-        ctk.CTkButton(deploy_btns, text="All Users .ps1", command=lambda: self._export_ps1(all_users=True), font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=28, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(3, 0))
+        self._grid_buttons(
+            deploy_btns,
+            [
+                {"key": "tools.export_ps1", "command": self._export_ps1},
+                {"key": "tools.all_users_ps1", "command": lambda: self._export_ps1(all_users=True)},
+            ],
+            columns=2,
+            common={"font": ctk.CTkFont(size=10), "fg_color": UI["hover"], "hover_color": UI["border"], "height": 28, "corner_radius": 4},
+        )
 
         bundle_btns = ctk.CTkFrame(deploy_inner, fg_color="transparent")
         bundle_btns.pack(fill="x", pady=(6, 0))
-        ctk.CTkButton(bundle_btns, text="Backup Bundle", command=self._backup_bundle, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=28, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(0, 3))
-        ctk.CTkButton(bundle_btns, text="Restore Bundle", command=self._restore_bundle, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=28, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(3, 0))
+        self._grid_buttons(
+            bundle_btns,
+            [
+                {"key": "tools.backup_bundle", "command": self._backup_bundle},
+                {"key": "tools.restore_bundle", "command": self._restore_bundle},
+            ],
+            columns=2,
+            common={"font": ctk.CTkFont(size=10), "fg_color": UI["hover"], "hover_color": UI["border"], "height": 28, "corner_radius": 4},
+        )
 
         state_btns = ctk.CTkFrame(deploy_inner, fg_color="transparent")
         state_btns.pack(fill="x", pady=(6, 0))
-        context_text = "Remove Shell Menu" if is_context_menu_installed() else "Install Shell Menu"
-        darkmode_text = "Remove Auto Dark" if is_darkmode_auto_switch_installed() else "Install Auto Dark"
-        ctk.CTkButton(state_btns, text=context_text, command=self._toggle_context_menu, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=28, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(0, 3))
-        ctk.CTkButton(state_btns, text="Menu Inventory", command=self._export_context_menu_inventory, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=28, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(3, 3))
-        ctk.CTkButton(state_btns, text=darkmode_text, command=self._toggle_darkmode_auto_switch, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=28, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(3, 0))
+        context_key = "tools.remove_shell_menu" if is_context_menu_installed() else "tools.install_shell_menu"
+        darkmode_key = "tools.remove_auto_dark" if is_darkmode_auto_switch_installed() else "tools.install_auto_dark"
+        self._grid_buttons(
+            state_btns,
+            [
+                {"key": context_key, "command": self._toggle_context_menu},
+                {"key": "tools.menu_inventory", "command": self._export_context_menu_inventory},
+                {"key": darkmode_key, "command": self._toggle_darkmode_auto_switch},
+            ],
+            columns=2,
+            common={"font": ctk.CTkFont(size=10), "fg_color": UI["hover"], "hover_color": UI["border"], "height": 28, "corner_radius": 4},
+        )
         row += 1
 
     def _diff_vs_file(self):

@@ -4,15 +4,6 @@ Backlog for ExplorerTweaks. Goal: stay focused on File Explorer and closely rela
 
 ## Research-Driven Additions
 
-### P2
-
-- [ ] P2 - Perform accessibility and localization pass
-  Why: Custom widget controls, emoji labels, fixed minimum layout, modal-only feedback, and English-only strings limit usability compared with mature utilities that include language options.
-  Evidence: `SettingCard`, `NavButton`, Tools page labels; WinSetView and Easy Context Menu language support.
-  Touches: `explorer_tweaks.py`, `README.md`
-  Acceptance: Visible strings come from a message catalog, high-contrast/focus states are verified, compact layout works below the current 1300px minimum where practical, and icon-only/emoji text has accessible labels or text alternatives.
-  Complexity: L
-
 ### P3
 
 - [ ] P3 - Improve release packaging and trust signals

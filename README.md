@@ -1,6 +1,6 @@
-# ExplorerTweaks v2.12.0
+# ExplorerTweaks v2.13.0
 
-![Version](https://img.shields.io/badge/Version-2.12.0-1DB954?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.13.0-1DB954?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=for-the-badge&logo=windows)
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)
@@ -20,6 +20,8 @@ ExplorerTweaks is a Windows File Explorer and shell configuration utility with a
 - Targeted shell/theme refresh after supported changes, with forced Explorer restart kept as an explicit fallback.
 - Persistent GUI operation log/status panel plus structured JSON operation reports from CLI dry-runs.
 - Windows 11 25H2-aware OS detection and min/max build gates for setting catalog compatibility.
+- English message catalog for GUI chrome, Tools controls, dialogs, and accessibility labels.
+- Compact 1080px-wide GUI layout with wrapped tool action rows and high-contrast focus outlines.
 - Managed policy metadata for mapped settings plus Intune remediation detection/remediation script export.
 - Explorer folder-view defaults preview, backup, restore, and Details/List/Large Icons preset apply.
 - Context-menu inventory, reversible `LegacyDisable` toggles, and HKCU action-pack export/import.

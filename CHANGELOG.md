@@ -2,6 +2,13 @@
 
 All notable changes to ExplorerTweaks will be documented in this file.
 
+## [v2.13.0] - 2026-06-30
+
+### Added
+- Added an English GUI message catalog for app chrome, Tools controls, common dialogs, and accessibility labels.
+- Added accessibility metadata and high-contrast focus outlines for navigation buttons, shared cards, switches, radio controls, search, and the operation log.
+- Added compact 1080px-wide layout support with wrapped Tools action grids and tests for localization/accessibility layout contracts.
+
 ## [v2.12.0] - 2026-06-30
 
 ### Changed
