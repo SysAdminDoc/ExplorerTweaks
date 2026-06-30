@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ExplorerTweaks v2.9.0 - Windows File Explorer Configuration Utility
+ExplorerTweaks v2.10.0 - Windows File Explorer Configuration Utility
 Pixel-accurate Windows 11 File Explorer and Taskbar simulation.
 
 Author: SysAdminDoc
@@ -34,7 +34,7 @@ from enum import Enum
 from pathlib import Path
 
 APP_NAME = "ExplorerTweaks"
-APP_VERSION = "2.9.0"
+APP_VERSION = "2.10.0"
 DARKMODE_TASK_NAME = r"\ExplorerTweaks\DarkModeAutoSwitch"
 DARKMODE_SCRIPT_NAME = "darkmode_auto_switch.ps1"
 
@@ -2130,6 +2130,211 @@ def restore_backup_bundle(filepath: str) -> Dict[str, int]:
 
 
 # ============================================================================
+# EXPLORER FOLDER VIEW DEFAULTS
+# ============================================================================
+
+FOLDER_VIEW_BAGS_PATH = r"Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\Bags"
+FOLDER_VIEW_BAGMRU_PATH = r"Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\BagMRU"
+FOLDER_VIEW_ALLFOLDERS_PATH = FOLDER_VIEW_BAGS_PATH + r"\AllFolders\Shell"
+FOLDER_VIEW_REGISTRY_PATHS = [FOLDER_VIEW_BAGS_PATH, FOLDER_VIEW_BAGMRU_PATH]
+FOLDER_VIEW_BACKUP_TYPE = "folder_view_defaults"
+FOLDER_VIEW_TEMPLATES = {
+    "generic": {"name": "Generic", "guid": "{5c4f28b5-f869-4e84-8e60-f11db97c5cc7}"},
+    "documents": {"name": "Documents", "guid": "{7d49d726-3c21-4f05-99aa-fdc2c9474656}"},
+    "pictures": {"name": "Pictures", "guid": "{b3690e58-e961-423b-b687-386ebfd83239}"},
+    "music": {"name": "Music", "guid": "{94d6ddcc-4a68-4175-a374-bd584a510b78}"},
+    "videos": {"name": "Videos", "guid": "{5fa96407-7e77-483c-ac93-691d05850de8}"},
+    "downloads": {"name": "Downloads", "guid": "{885a186e-a440-4ada-812b-db871b942259}"},
+}
+FOLDER_VIEW_PRESETS = {
+    "details": {"name": "Details", "Mode": 4, "LogicalViewMode": 1, "IconSize": 16, "GroupView": 0},
+    "list": {"name": "List", "Mode": 3, "LogicalViewMode": 3, "IconSize": 16, "GroupView": 0},
+    "large_icons": {"name": "Large Icons", "Mode": 5, "LogicalViewMode": 3, "IconSize": 96, "GroupView": 0},
+}
+
+
+def folder_view_template_paths() -> List[Tuple[str, str]]:
+    paths = [("All folders", FOLDER_VIEW_ALLFOLDERS_PATH)]
+    for template in FOLDER_VIEW_TEMPLATES.values():
+        paths.append((template["name"], FOLDER_VIEW_ALLFOLDERS_PATH + "\\" + template["guid"]))
+    return paths
+
+
+def folder_view_allowed_registry_keys() -> List[str]:
+    return [f"HKCU\\{path}" for path in FOLDER_VIEW_REGISTRY_PATHS]
+
+
+def folder_view_defaults_preview() -> List[Dict[str, Any]]:
+    preview = []
+    for name, path in folder_view_template_paths():
+        values = {
+            key: get_registry_value(path, key)
+            for key in ("Mode", "LogicalViewMode", "IconSize", "GroupView")
+        }
+        preview.append({
+            "template": name,
+            "path": f"HKCU\\{path}",
+            "configured": any(value is not None for value in values.values()),
+            "values": values,
+        })
+    return preview
+
+
+def build_folder_view_operations(preset_name: str = "details", reset_existing: bool = True) -> List[RegistryOperation]:
+    preset_key = preset_name.lower()
+    if preset_key not in FOLDER_VIEW_PRESETS:
+        raise ValueError(f"Unknown folder view preset: {preset_name}")
+    preset = FOLDER_VIEW_PRESETS[preset_key]
+    operations: List[RegistryOperation] = []
+    if reset_existing:
+        operations.append(registry_delete_tree_operation(FOLDER_VIEW_BAGMRU_PATH, label="folder view BagMRU reset"))
+        operations.append(registry_delete_tree_operation(FOLDER_VIEW_BAGS_PATH, label="folder view Bags reset"))
+    for _, path in folder_view_template_paths():
+        operations.extend([
+            registry_set_operation(path, "Mode", preset["Mode"], "DWORD", label=f"folder view {preset['name']}"),
+            registry_set_operation(path, "LogicalViewMode", preset["LogicalViewMode"], "DWORD", label=f"folder view {preset['name']}"),
+            registry_set_operation(path, "IconSize", preset["IconSize"], "DWORD", label=f"folder view {preset['name']}"),
+            registry_set_operation(path, "GroupView", preset["GroupView"], "DWORD", label=f"folder view {preset['name']}"),
+            registry_set_operation(path, "FolderType", "NotSpecified", "String", label=f"folder view {preset['name']}"),
+        ])
+    return operations
+
+
+def apply_folder_view_defaults(preset_name: str = "details", backup_path: Optional[str] = None, dry_run: Optional[bool] = None) -> RegistryPlanReport:
+    if backup_path:
+        create_folder_view_backup(backup_path)
+    operations = build_folder_view_operations(preset_name, reset_existing=True)
+    return execute_registry_plan(operations, label=f"folder view defaults: {preset_name}", dry_run=dry_run)
+
+
+def validate_folder_view_backup_zip(zf: zipfile.ZipFile) -> Tuple[Dict[str, Any], set]:
+    zip_files: Dict[str, zipfile.ZipInfo] = {}
+    manifest_count = 0
+    for info in zf.infolist():
+        normalized = normalize_backup_member_name(info.filename)
+        if info.is_dir():
+            if normalized != "registry":
+                raise BackupBundleValidationError(f"Folder view backup contains an unexpected directory: {info.filename}")
+            continue
+        if normalized in zip_files:
+            raise BackupBundleValidationError(f"Folder view backup contains a duplicate file: {normalized}")
+        zip_files[normalized] = info
+        if normalized == BACKUP_MANIFEST_FILE:
+            manifest_count += 1
+    if manifest_count != 1:
+        raise BackupBundleValidationError("Folder view backup must contain exactly one manifest.json file.")
+
+    try:
+        metadata = json.loads(zf.read(zip_files[BACKUP_MANIFEST_FILE]).decode("utf-8-sig"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise BackupBundleValidationError(f"Folder view backup manifest is not valid JSON: {exc}") from exc
+    if metadata.get("app") != APP_NAME or metadata.get("type") != FOLDER_VIEW_BACKUP_TYPE:
+        raise BackupBundleValidationError("Folder view backup manifest does not match ExplorerTweaks folder view backups.")
+
+    allowed_files = {BACKUP_MANIFEST_FILE}
+    allowed_keys = folder_view_allowed_registry_keys()
+    registry_exports = metadata.get("registry_exports", [])
+    if not isinstance(registry_exports, list):
+        raise BackupBundleValidationError("Folder view backup registry_exports must be a list.")
+    for export in registry_exports:
+        if not isinstance(export, dict):
+            raise BackupBundleValidationError("Folder view backup registry export must be an object.")
+        key = export.get("key")
+        if not isinstance(key, str) or not is_allowed_backup_registry_key(key, allowed_keys):
+            raise BackupBundleValidationError(f"Folder view backup references a non-whitelisted registry key: {key}")
+        export_file = validate_manifest_file_path(export.get("file"), "registry", ".reg")
+        if export_file not in zip_files:
+            raise BackupBundleValidationError(f"Folder view backup references a missing registry file: {export_file}")
+        validate_reg_file_content(zf.read(zip_files[export_file]), allowed_keys, export_file)
+        allowed_files.add(export_file)
+    for member_name in zip_files:
+        if member_name not in allowed_files:
+            raise BackupBundleValidationError(f"Folder view backup contains an unexpected payload entry: {member_name}")
+    return metadata, allowed_files
+
+
+def create_folder_view_backup(filepath: str) -> Dict[str, Any]:
+    metadata: Dict[str, Any] = {
+        "app": APP_NAME,
+        "type": FOLDER_VIEW_BACKUP_TYPE,
+        "version": APP_VERSION,
+        "created_utc": datetime.now(timezone.utc).isoformat(),
+        "registry_exports": [],
+        "missing_registry_paths": [],
+    }
+    if DRY_RUN:
+        print(f"[DRY-RUN] CREATE folder view backup: {filepath}")
+        for path in FOLDER_VIEW_REGISTRY_PATHS:
+            print(f"[DRY-RUN] EXPORT HKCU\\{path}")
+        log_operation("folder_view_backup", "planned", f"Folder view backup would be created: {filepath}", metadata=metadata)
+        return metadata
+
+    with tempfile.TemporaryDirectory(prefix="ExplorerTweaksFolderViewBackup_") as temp_dir:
+        temp_path = Path(temp_dir)
+        registry_dir = temp_path / "registry"
+        registry_dir.mkdir(parents=True, exist_ok=True)
+        for path in FOLDER_VIEW_REGISTRY_PATHS:
+            export_name = safe_backup_name(path) + ".reg"
+            export_path = registry_dir / export_name
+            result = subprocess.run(
+                ["reg", "export", f"HKCU\\{path}", str(export_path), "/y"],
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            if result.returncode == 0:
+                metadata["registry_exports"].append({"key": f"HKCU\\{path}", "file": f"registry/{export_name}"})
+            else:
+                metadata["missing_registry_paths"].append(f"HKCU\\{path}")
+        (temp_path / BACKUP_MANIFEST_FILE).write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        output_path = Path(filepath)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if output_path.exists():
+            output_path.unlink()
+        with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for item in temp_path.rglob("*"):
+                if item.is_file():
+                    zf.write(item, item.relative_to(temp_path).as_posix())
+
+    log_operation(
+        "folder_view_backup",
+        "success",
+        f"Folder view backup created: {filepath}",
+        registry_exports=len(metadata.get("registry_exports", [])),
+        missing_registry_paths=len(metadata.get("missing_registry_paths", [])),
+    )
+    return metadata
+
+
+def restore_folder_view_backup(filepath: str, dry_run: Optional[bool] = None) -> Dict[str, int]:
+    if not os.path.isfile(filepath):
+        raise FileNotFoundError(filepath)
+    effective_dry_run = DRY_RUN if dry_run is None else dry_run
+    results = {"registry_imported": 0, "errors": 0}
+    with zipfile.ZipFile(filepath, "r") as zf:
+        metadata, _ = validate_folder_view_backup_zip(zf)
+        for export in metadata.get("registry_exports", []):
+            export_file = export.get("file", "")
+            operations = parse_reg_file_operations(zf.read(export_file), export_file)
+            if effective_dry_run:
+                print(f"[DRY-RUN] RESTORE folder view {export_file}: {len(operations)} registry operation(s)")
+                results["registry_imported"] += 1
+                continue
+            report = execute_registry_plan(operations, label=f"folder view restore {export_file}", dry_run=False)
+            if report.success:
+                results["registry_imported"] += 1
+            else:
+                results["errors"] += len(report.errors) or 1
+    log_operation(
+        "folder_view_restore",
+        "success" if results["errors"] == 0 else "warning",
+        f"Folder view backup restore completed: {filepath}",
+        results=results,
+    )
+    return results
+
+
+# ============================================================================
 # CONTEXT MENU SHELL INTEGRATION
 # ============================================================================
 
@@ -3953,6 +4158,26 @@ class App(ctk.CTk):
             ctk.CTkButton(diff_btns, text=f"vs {pname}", command=lambda n=pname: self._diff_vs_preset(n), font=ctk.CTkFont(size=9), fg_color=UI["hover"], hover_color=UI["border"], height=26, corner_radius=4).pack(side="left", padx=2)
         row += 1
 
+        # --- Folder Views ---
+        ctk.CTkLabel(self.scroll, text="Folder Views", font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["accent"]).grid(row=row, column=0, sticky="w", pady=(12, 6))
+        row += 1
+
+        folder_f = ctk.CTkFrame(self.scroll, fg_color=UI["card"], corner_radius=8)
+        folder_f.grid(row=row, column=0, sticky="ew", pady=(0, 4))
+        folder_f.grid_columnconfigure(0, weight=1)
+
+        folder_inner = ctk.CTkFrame(folder_f, fg_color="transparent")
+        folder_inner.pack(fill="x", padx=12, pady=10)
+        configured = sum(1 for item in folder_view_defaults_preview() if item["configured"])
+        ctk.CTkLabel(folder_inner, text=f"{configured}/{len(folder_view_template_paths())} folder templates configured.", font=ctk.CTkFont(size=10), text_color=UI["text_sec"], anchor="w").pack(anchor="w", pady=(0, 8))
+
+        folder_btns = ctk.CTkFrame(folder_inner, fg_color="transparent")
+        folder_btns.pack(fill="x")
+        ctk.CTkButton(folder_btns, text="Backup Views", command=self._backup_folder_views, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=28, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(0, 3))
+        ctk.CTkButton(folder_btns, text="Apply Details", command=lambda: self._apply_folder_view_preset("details"), font=ctk.CTkFont(size=10, weight="bold"), fg_color=UI["accent"], hover_color=UI["accent_hover"], height=28, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(3, 3))
+        ctk.CTkButton(folder_btns, text="Restore Views", command=self._restore_folder_views, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=28, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(3, 0))
+        row += 1
+
         # --- Deployment ---
         ctk.CTkLabel(self.scroll, text="Deployment", font=ctk.CTkFont(size=12, weight="bold"), text_color=UI["accent"]).grid(row=row, column=0, sticky="w", pady=(12, 6))
         row += 1
@@ -4195,6 +4420,58 @@ class App(ctk.CTk):
                 self._refresh_operation_log()
                 messagebox.showerror("Restore", str(exc))
 
+    def _default_folder_view_backup_path(self) -> str:
+        base = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / APP_NAME / "folder_view_backups"
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return str(base / f"ExplorerTweaks_folder_views_{stamp}.zip")
+
+    def _backup_folder_views(self):
+        from tkinter import filedialog
+        path = filedialog.asksaveasfilename(
+            defaultextension=".zip",
+            filetypes=[("Folder View Backup", "*.zip")],
+            initialfile="ExplorerTweaks_folder_views.zip",
+        )
+        if path:
+            try:
+                metadata = create_folder_view_backup(path)
+                self._refresh_operation_log()
+                messagebox.showinfo("Folder Views", f"Folder view backup saved:\n{path}\n\nRegistry exports: {len(metadata.get('registry_exports', []))}")
+                self._show_category("Tools")
+            except Exception as exc:
+                log_operation("folder_view_backup", "error", str(exc), path=path)
+                self._refresh_operation_log()
+                messagebox.showerror("Folder Views", str(exc))
+
+    def _restore_folder_views(self):
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(filetypes=[("Folder View Backup", "*.zip")])
+        if path:
+            try:
+                results = restore_folder_view_backup(path)
+                self._refresh_operation_log()
+                messagebox.showinfo("Folder Views", f"Folder view restore complete.\n\nRegistry files: {results['registry_imported']}\nErrors: {results['errors']}")
+                self._show_category("Tools")
+            except Exception as exc:
+                log_operation("folder_view_restore", "error", str(exc), path=path)
+                self._refresh_operation_log()
+                messagebox.showerror("Folder Views", str(exc))
+
+    def _apply_folder_view_preset(self, preset_name: str):
+        try:
+            backup_path = self._default_folder_view_backup_path()
+            report = apply_folder_view_defaults(preset_name, backup_path=backup_path)
+            self._refresh_operation_log()
+            messagebox.showinfo(
+                "Folder Views",
+                f"Applied {FOLDER_VIEW_PRESETS[preset_name]['name']} folder view defaults.\n\nBackup: {backup_path}\nVerified: {report.verified}\nErrors: {len(report.errors)}",
+            )
+            self._show_category("Tools")
+        except Exception as exc:
+            log_operation("folder_view_apply", "error", str(exc), preset=preset_name)
+            self._refresh_operation_log()
+            messagebox.showerror("Folder Views", str(exc))
+
     def _toggle_context_menu(self):
         enable = not is_context_menu_installed()
         if set_context_menu_integration(enable):
@@ -4317,6 +4594,19 @@ def cli_export_profile_ps1(profile_path: str, output_path: str, all_users: bool 
     print(f"Exported profile PowerShell script: {output_path}")
 
 
+def cli_folder_view_preview():
+    print("Folder View Defaults:")
+    for item in folder_view_defaults_preview():
+        status = "configured" if item["configured"] else "not configured"
+        values = item["values"]
+        print(
+            f"  {item['template']}: {status} "
+            f"(Mode={values['Mode']}, LogicalViewMode={values['LogicalViewMode']}, IconSize={values['IconSize']}, GroupView={values['GroupView']})"
+        )
+    print()
+    print("Available presets: " + ", ".join(FOLDER_VIEW_PRESETS.keys()))
+
+
 def parse_computer_targets(computer_args: List[str], computers_arg: Optional[str]) -> List[str]:
     targets: List[str] = []
     for value in computer_args:
@@ -4360,6 +4650,11 @@ def main():
     parser.add_argument("--computers", help="Comma-separated remote computer list for --remote-apply")
     parser.add_argument("--backup", metavar="FILE", help="Create an ExplorerTweaks backup bundle")
     parser.add_argument("--restore", metavar="FILE", help="Restore an ExplorerTweaks backup bundle")
+    parser.add_argument("--folder-view-preview", action="store_true", help="Preview current Explorer folder-view defaults")
+    parser.add_argument("--folder-view-backup", metavar="FILE", help="Back up Explorer folder-view defaults")
+    parser.add_argument("--folder-view-restore", metavar="FILE", help="Restore an Explorer folder-view defaults backup")
+    parser.add_argument("--folder-view-apply", choices=list(FOLDER_VIEW_PRESETS.keys()), help="Apply Explorer folder-view defaults preset")
+    parser.add_argument("--folder-view-backup-before", metavar="FILE", help="Create a folder-view backup before --folder-view-apply")
     parser.add_argument("--install-context-menu", action="store_true", help="Install ExplorerTweaks right-click shell entries")
     parser.add_argument("--uninstall-context-menu", action="store_true", help="Remove ExplorerTweaks right-click shell entries")
     parser.add_argument("--context-menu-status", action="store_true", help="Print ExplorerTweaks shell integration status")
@@ -4433,6 +4728,46 @@ def main():
                 print(f"Registry files: {results['registry_imported']}")
                 print(f"Files restored: {results['files_restored']}")
                 print(f"Errors: {results['errors']}")
+                return
+            except Exception as exc:
+                print(f"Error: {exc}")
+                sys.exit(1)
+
+        if args.folder_view_preview:
+            cli_folder_view_preview()
+            return
+
+        if args.folder_view_backup:
+            try:
+                metadata = create_folder_view_backup(args.folder_view_backup)
+                print(f"{'[DRY-RUN] ' if DRY_RUN else ''}Folder view backup: {args.folder_view_backup}")
+                print(f"Registry exports: {len(metadata.get('registry_exports', []))}")
+                print(f"Missing registry paths: {len(metadata.get('missing_registry_paths', []))}")
+                return
+            except Exception as exc:
+                print(f"Error: {exc}")
+                sys.exit(1)
+
+        if args.folder_view_restore:
+            try:
+                results = restore_folder_view_backup(args.folder_view_restore, dry_run=DRY_RUN)
+                print(f"{'[DRY-RUN] ' if DRY_RUN else ''}Folder view restore complete.")
+                print(f"Registry files: {results['registry_imported']}")
+                print(f"Errors: {results['errors']}")
+                return
+            except Exception as exc:
+                print(f"Error: {exc}")
+                sys.exit(1)
+
+        if args.folder_view_apply:
+            try:
+                report = apply_folder_view_defaults(args.folder_view_apply, backup_path=args.folder_view_backup_before, dry_run=DRY_RUN)
+                print(f"{'[DRY-RUN] ' if DRY_RUN else ''}Folder view preset applied: {args.folder_view_apply}")
+                print(f"Planned: {report.planned}")
+                print(f"Verified: {report.verified}")
+                print(f"Errors: {len(report.errors)}")
+                if args.folder_view_backup_before:
+                    print(f"Backup: {args.folder_view_backup_before}")
                 return
             except Exception as exc:
                 print(f"Error: {exc}")

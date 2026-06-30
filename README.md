@@ -1,6 +1,6 @@
-# ExplorerTweaks v2.9.0
+# ExplorerTweaks v2.10.0
 
-![Version](https://img.shields.io/badge/Version-2.9.0-1DB954?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.10.0-1DB954?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=for-the-badge&logo=windows)
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)
@@ -21,6 +21,7 @@ ExplorerTweaks is a Windows File Explorer and shell configuration utility with a
 - Persistent GUI operation log/status panel plus structured JSON operation reports from CLI dry-runs.
 - Windows 11 25H2-aware OS detection and min/max build gates for setting catalog compatibility.
 - Managed policy metadata for mapped settings plus Intune remediation detection/remediation script export.
+- Explorer folder-view defaults preview, backup, restore, and Details/List/Large Icons preset apply.
 - PowerShell deployment script export for current-user or all-loaded-user registry hives.
 - PSRemoting profile push for fleets that already have WinRM access configured.
 - Multi-user local apply across `HKU\.DEFAULT` and loaded user SIDs.
@@ -64,6 +65,10 @@ python explorer_tweaks.py --export-intune-remediation profile.json .\intune-reme
 python explorer_tweaks.py --remote-apply profile.json --computer PC-01 --computer PC-02 --dry-run
 python explorer_tweaks.py --backup ExplorerTweaks_backup.zip
 python explorer_tweaks.py --restore ExplorerTweaks_backup.zip
+python explorer_tweaks.py --folder-view-preview
+python explorer_tweaks.py --folder-view-backup folder_views.zip
+python explorer_tweaks.py --folder-view-apply details --folder-view-backup-before folder_views.zip
+python explorer_tweaks.py --folder-view-restore folder_views.zip
 python explorer_tweaks.py --install-context-menu
 python explorer_tweaks.py --uninstall-context-menu
 python explorer_tweaks.py --install-darkmode-auto-switch
@@ -93,6 +98,8 @@ Pass `--managed-policy` with PowerShell exports to write mapped HKLM policy keys
 `--remote-apply` uses PowerShell Remoting and assumes WinRM access is already configured for the target computers. It does not manage credentials or enable remoting.
 
 The dark-mode auto-switch installs a per-user scheduled task named `\ExplorerTweaks\DarkModeAutoSwitch`. If Windows Location access is disabled, reinstall with `--darkmode-lat` and `--darkmode-lon`.
+
+Folder-view defaults manage the current user's Explorer Shell Bags defaults. `--folder-view-apply` resets existing folder view bags, writes the selected preset for common folder templates, and should be paired with `--folder-view-backup-before` or the GUI's automatic backup.
 
 ## Registry Locations
 

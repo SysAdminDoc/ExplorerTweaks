@@ -2,6 +2,14 @@
 
 All notable changes to ExplorerTweaks will be documented in this file.
 
+## [v2.10.0] - 2026-06-30
+
+### Added
+- Added Explorer folder-view defaults preview for common folder templates.
+- Added folder-view-only backup and restore bundles for the current user's Shell Bags registry state.
+- Added Details, List, and Large Icons folder-view presets with CLI and GUI apply paths.
+- Added tests for folder-view registry operation planning, preview summaries, and backup validation.
+
 ## [v2.9.0] - 2026-06-30
 
 ### Added

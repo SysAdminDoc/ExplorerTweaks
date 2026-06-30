@@ -320,6 +320,57 @@ class DeploymentHelperTests(unittest.TestCase):
         self.assertTrue(et.is_setting_supported(max_24h2, et.OSVersion.WINDOWS_11_24H2))
         self.assertFalse(et.is_setting_supported(max_24h2, et.OSVersion.WINDOWS_11_25H2))
 
+    def test_folder_view_details_operations_reset_bags_and_set_templates(self):
+        operations = et.build_folder_view_operations("details", reset_existing=True)
+        delete_paths = [operation.path for operation in operations if operation.action == "delete_tree"]
+        set_operations = [operation for operation in operations if operation.action == "set_value"]
+
+        self.assertIn(et.FOLDER_VIEW_BAGMRU_PATH, delete_paths)
+        self.assertIn(et.FOLDER_VIEW_BAGS_PATH, delete_paths)
+        self.assertEqual(len(set_operations), len(et.folder_view_template_paths()) * 5)
+        mode_values = {
+            (operation.path, operation.name): operation.value
+            for operation in set_operations
+            if operation.name in ("Mode", "LogicalViewMode", "IconSize", "GroupView")
+        }
+        for _, path in et.folder_view_template_paths():
+            self.assertEqual(mode_values[(path, "Mode")], 4)
+            self.assertEqual(mode_values[(path, "LogicalViewMode")], 1)
+            self.assertEqual(mode_values[(path, "IconSize")], 16)
+            self.assertEqual(mode_values[(path, "GroupView")], 0)
+
+    def test_folder_view_preview_reports_configured_templates(self):
+        def fake_get(path, name, hive=et.winreg.HKEY_CURRENT_USER):
+            if name == "Mode" and path == et.FOLDER_VIEW_ALLFOLDERS_PATH:
+                return 4
+            return None
+
+        with patch.object(et, "get_registry_value", side_effect=fake_get):
+            preview = et.folder_view_defaults_preview()
+
+        self.assertTrue(preview[0]["configured"])
+        self.assertEqual(preview[0]["values"]["Mode"], 4)
+        self.assertFalse(preview[1]["configured"])
+
+    def test_folder_view_backup_rejects_non_folder_registry_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = Path(tmp) / "bad_folder_view.zip"
+            manifest = {
+                "app": et.APP_NAME,
+                "type": et.FOLDER_VIEW_BACKUP_TYPE,
+                "version": et.APP_VERSION,
+                "created_utc": "2026-06-30T00:00:00+00:00",
+                "registry_exports": [{"key": r"HKCU\Software\Evil", "file": "registry/evil.reg"}],
+                "missing_registry_paths": [],
+            }
+            with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr(et.BACKUP_MANIFEST_FILE, json.dumps(manifest))
+                zf.writestr("registry/evil.reg", self._valid_reg_file())
+
+            with zipfile.ZipFile(bundle, "r") as zf:
+                with self.assertRaises(et.BackupBundleValidationError):
+                    et.validate_folder_view_backup_zip(zf)
+
     def test_restart_explorer_dry_run_reports_explicit_fallback(self):
         original_dry_run = et.DRY_RUN
         et.DRY_RUN = True

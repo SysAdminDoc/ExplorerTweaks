@@ -6,13 +6,6 @@ Backlog for ExplorerTweaks. Goal: stay focused on File Explorer and closely rela
 
 ### P2
 
-- [ ] P2 - Add Explorer folder-view defaults management
-  Why: Explorer users commonly want consistent Details/List/Icon views, columns, grouping, and sort order across folder types.
-  Evidence: WinSetView feature set; current ExplorerTweaks Appearance settings stop at single registry toggles.
-  Touches: `explorer_tweaks.py`, `tests/test_deployment_helpers.py`
-  Acceptance: User can preview, back up, apply, and restore folder-type view defaults for common templates without replacing Explorer.
-  Complexity: XL
-
 - [ ] P2 - Expand context-menu management beyond ExplorerTweaks entries
   Why: The app installs its own shell entries and manages Send To items, but competitors expose inventory, disable/enable, icons, Shift-only visibility, and reusable action packs.
   Evidence: `CONTEXT_MENU_TARGETS`, `get_sendto_entries`; ShellAnything and Easy Context Menu.
