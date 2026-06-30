@@ -371,6 +371,58 @@ class DeploymentHelperTests(unittest.TestCase):
                 with self.assertRaises(et.BackupBundleValidationError):
                     et.validate_folder_view_backup_zip(zf)
 
+    def test_context_menu_action_pack_operations_are_hkcu_bounded(self):
+        operations = et.context_menu_action_operations(
+            {
+                "target": "folder_background",
+                "name": "OpenTools",
+                "label": "Open Tools",
+                "command": r"explorer.exe %V",
+                "icon": "shell32.dll,1",
+                "shift_only": True,
+            }
+        )
+
+        paths = [operation.path for operation in operations]
+        self.assertIn(r"Software\Classes\Directory\Background\shell\OpenTools", paths)
+        self.assertIn(r"Software\Classes\Directory\Background\shell\OpenTools\command", paths)
+        self.assertTrue(all(operation.hive == et.winreg.HKEY_CURRENT_USER for operation in operations))
+        self.assertTrue(any(operation.name == "Extended" for operation in operations))
+
+    def test_context_menu_action_rejects_unsafe_target_and_name(self):
+        with self.assertRaises(ValueError):
+            et.validate_context_menu_action(
+                {
+                    "target": "hklm",
+                    "name": "Bad",
+                    "label": "Bad",
+                    "command": "cmd.exe",
+                }
+            )
+        with self.assertRaises(ValueError):
+            et.validate_context_menu_action(
+                {
+                    "target": "files",
+                    "name": r"..\Bad",
+                    "label": "Bad",
+                    "command": "cmd.exe",
+                }
+            )
+
+    def test_context_menu_entry_id_must_stay_under_inventory_roots(self):
+        self.assertTrue(
+            et.is_context_menu_inventory_path(
+                "HKCU",
+                r"Software\Classes\Directory\shell\ExplorerTweaks",
+            )
+        )
+        self.assertFalse(
+            et.is_context_menu_inventory_path(
+                "HKCU",
+                r"Software\Microsoft\Windows\CurrentVersion\Run\Bad",
+            )
+        )
+
     def test_restart_explorer_dry_run_reports_explicit_fallback(self):
         original_dry_run = et.DRY_RUN
         et.DRY_RUN = True

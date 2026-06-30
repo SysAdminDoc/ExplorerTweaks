@@ -6,13 +6,6 @@ Backlog for ExplorerTweaks. Goal: stay focused on File Explorer and closely rela
 
 ### P2
 
-- [ ] P2 - Expand context-menu management beyond ExplorerTweaks entries
-  Why: The app installs its own shell entries and manages Send To items, but competitors expose inventory, disable/enable, icons, Shift-only visibility, and reusable action packs.
-  Evidence: `CONTEXT_MENU_TARGETS`, `get_sendto_entries`; ShellAnything and Easy Context Menu.
-  Touches: `explorer_tweaks.py`
-  Acceptance: User can inspect common HKCU/HKLM context-menu entries, disable reversible registry-backed entries, export/import a safe action pack, and restore previous state.
-  Complexity: L
-
 - [ ] P2 - Pin and upgrade GUI/build dependencies with repeatable artifacts
   Why: `requirements.txt` floats CustomTkinter and PyInstaller major behavior, making portable EXE builds non-reproducible.
   Evidence: `requirements.txt`; PyInstaller changelog; CustomTkinter PyPI release history.

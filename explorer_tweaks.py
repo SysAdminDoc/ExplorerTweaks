@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ExplorerTweaks v2.10.0 - Windows File Explorer Configuration Utility
+ExplorerTweaks v2.11.0 - Windows File Explorer Configuration Utility
 Pixel-accurate Windows 11 File Explorer and Taskbar simulation.
 
 Author: SysAdminDoc
@@ -34,7 +34,7 @@ from enum import Enum
 from pathlib import Path
 
 APP_NAME = "ExplorerTweaks"
-APP_VERSION = "2.10.0"
+APP_VERSION = "2.11.0"
 DARKMODE_TASK_NAME = r"\ExplorerTweaks\DarkModeAutoSwitch"
 DARKMODE_SCRIPT_NAME = "darkmode_auto_switch.ps1"
 
@@ -2366,6 +2366,206 @@ CONTEXT_MENU_TARGETS = [
     },
 ]
 
+CONTEXT_MENU_INVENTORY_ROOTS = [
+    {"hive_alias": "HKCU", "hive": winreg.HKEY_CURRENT_USER, "path": r"Software\Classes\*\shell", "kind": "shell", "target": "Files"},
+    {"hive_alias": "HKCU", "hive": winreg.HKEY_CURRENT_USER, "path": r"Software\Classes\*\shellex\ContextMenuHandlers", "kind": "shellex", "target": "Files"},
+    {"hive_alias": "HKCU", "hive": winreg.HKEY_CURRENT_USER, "path": r"Software\Classes\Directory\shell", "kind": "shell", "target": "Directories"},
+    {"hive_alias": "HKCU", "hive": winreg.HKEY_CURRENT_USER, "path": r"Software\Classes\Directory\shellex\ContextMenuHandlers", "kind": "shellex", "target": "Directories"},
+    {"hive_alias": "HKCU", "hive": winreg.HKEY_CURRENT_USER, "path": r"Software\Classes\Directory\Background\shell", "kind": "shell", "target": "Folder Background"},
+    {"hive_alias": "HKCU", "hive": winreg.HKEY_CURRENT_USER, "path": r"Software\Classes\Drive\shell", "kind": "shell", "target": "Drives"},
+    {"hive_alias": "HKLM", "hive": winreg.HKEY_LOCAL_MACHINE, "path": r"Software\Classes\*\shell", "kind": "shell", "target": "Files"},
+    {"hive_alias": "HKLM", "hive": winreg.HKEY_LOCAL_MACHINE, "path": r"Software\Classes\*\shellex\ContextMenuHandlers", "kind": "shellex", "target": "Files"},
+    {"hive_alias": "HKLM", "hive": winreg.HKEY_LOCAL_MACHINE, "path": r"Software\Classes\Directory\shell", "kind": "shell", "target": "Directories"},
+    {"hive_alias": "HKLM", "hive": winreg.HKEY_LOCAL_MACHINE, "path": r"Software\Classes\Directory\shellex\ContextMenuHandlers", "kind": "shellex", "target": "Directories"},
+    {"hive_alias": "HKLM", "hive": winreg.HKEY_LOCAL_MACHINE, "path": r"Software\Classes\Directory\Background\shell", "kind": "shell", "target": "Folder Background"},
+    {"hive_alias": "HKLM", "hive": winreg.HKEY_LOCAL_MACHINE, "path": r"Software\Classes\Drive\shell", "kind": "shell", "target": "Drives"},
+]
+CONTEXT_MENU_PACK_TYPE = "context_menu_action_pack"
+CONTEXT_MENU_PACK_TARGETS = {
+    "files": r"Software\Classes\*\shell",
+    "directories": r"Software\Classes\Directory\shell",
+    "folder_background": r"Software\Classes\Directory\Background\shell",
+    "drives": r"Software\Classes\Drive\shell",
+}
+CONTEXT_MENU_ACTION_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_. -]{1,64}$")
+
+
+def iter_registry_subkeys(hive: int, path: str) -> List[str]:
+    try:
+        key = winreg.OpenKey(hive, path, 0, winreg.KEY_READ)
+    except OSError:
+        return []
+    names = []
+    try:
+        index = 0
+        while True:
+            try:
+                names.append(winreg.EnumKey(key, index))
+                index += 1
+            except OSError:
+                break
+    finally:
+        winreg.CloseKey(key)
+    return names
+
+
+def context_menu_entry_id(hive_alias: str, path: str) -> str:
+    return f"{hive_alias}|{path}"
+
+
+def parse_context_menu_entry_id(entry_id: str) -> Tuple[str, str]:
+    if "|" not in entry_id:
+        raise ValueError("Context-menu entry id must use HKCU|path or HKLM|path format.")
+    hive_alias, path = entry_id.split("|", 1)
+    hive_alias = hive_alias.upper()
+    if hive_alias not in REGISTRY_HIVE_VALUES or not path:
+        raise ValueError("Context-menu entry id has an unsupported hive or empty path.")
+    return hive_alias, path
+
+
+def is_context_menu_inventory_path(hive_alias: str, path: str) -> bool:
+    normalized = path.casefold()
+    for root in CONTEXT_MENU_INVENTORY_ROOTS:
+        if root["hive_alias"] != hive_alias:
+            continue
+        root_path = root["path"].casefold()
+        if normalized.startswith(root_path + "\\"):
+            return True
+    return False
+
+
+def get_context_menu_inventory() -> List[Dict[str, Any]]:
+    entries: List[Dict[str, Any]] = []
+    for root in CONTEXT_MENU_INVENTORY_ROOTS:
+        for name in iter_registry_subkeys(root["hive"], root["path"]):
+            path = root["path"] + "\\" + name
+            command = get_registry_value(path + r"\command", "", root["hive"]) if root["kind"] == "shell" else None
+            label = get_registry_value(path, "", root["hive"]) or get_registry_value(path, "MUIVerb", root["hive"]) or name
+            entries.append({
+                "id": context_menu_entry_id(root["hive_alias"], path),
+                "hive": root["hive_alias"],
+                "path": path,
+                "name": name,
+                "label": label,
+                "target": root["target"],
+                "kind": root["kind"],
+                "command": command,
+                "icon": get_registry_value(path, "Icon", root["hive"]),
+                "disabled": get_registry_value(path, "LegacyDisable", root["hive"]) is not None,
+                "shift_only": get_registry_value(path, "Extended", root["hive"]) is not None,
+                "programmatic_only": get_registry_value(path, "ProgrammaticAccessOnly", root["hive"]) is not None,
+                "handler": get_registry_value(path, "", root["hive"]) if root["kind"] == "shellex" else None,
+            })
+    return entries
+
+
+def export_context_menu_inventory(filepath: str) -> Dict[str, Any]:
+    payload = {
+        "app": APP_NAME,
+        "type": "context_menu_inventory",
+        "version": APP_VERSION,
+        "created_utc": datetime.now(timezone.utc).isoformat(),
+        "entries": get_context_menu_inventory(),
+    }
+    Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+    Path(filepath).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return payload
+
+
+def set_context_menu_entry_disabled(entry_id: str, disabled: bool) -> bool:
+    hive_alias, path = parse_context_menu_entry_id(entry_id)
+    if not is_context_menu_inventory_path(hive_alias, path):
+        raise ValueError("Context-menu entry is not under a managed inventory root.")
+    hive = REGISTRY_HIVE_VALUES[hive_alias]
+    operation = (
+        registry_set_operation(path, "LegacyDisable", "", "String", hive, "context menu disable")
+        if disabled
+        else registry_delete_value_operation(path, "LegacyDisable", hive, "context menu enable")
+    )
+    return execute_registry_plan([operation], label="context menu visibility").success
+
+
+def validate_context_menu_action(action: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(action, dict):
+        raise ValueError("Context-menu action must be an object.")
+    target = str(action.get("target", "")).strip()
+    name = str(action.get("name", "")).strip()
+    label = str(action.get("label", name)).strip()
+    command = str(action.get("command", "")).strip()
+    icon = str(action.get("icon", "")).strip()
+    if target not in CONTEXT_MENU_PACK_TARGETS:
+        raise ValueError(f"Unsupported context-menu action target: {target}")
+    if not CONTEXT_MENU_ACTION_NAME_PATTERN.match(name):
+        raise ValueError(f"Unsafe context-menu action name: {name}")
+    if not label or any(char in label for char in "\r\n"):
+        raise ValueError(f"Unsafe context-menu action label: {label}")
+    if not command or any(char in command for char in "\r\n") or len(command) > 2048:
+        raise ValueError(f"Unsafe context-menu action command: {name}")
+    return {
+        "target": target,
+        "name": name,
+        "label": label,
+        "command": command,
+        "icon": icon,
+        "shift_only": bool(action.get("shift_only", False)),
+    }
+
+
+def context_menu_action_operations(action: Dict[str, Any]) -> List[RegistryOperation]:
+    safe = validate_context_menu_action(action)
+    base_path = CONTEXT_MENU_PACK_TARGETS[safe["target"]] + "\\" + safe["name"]
+    operations = [
+        registry_set_operation(base_path, "", safe["label"], "String", label="context menu action"),
+        registry_set_operation(base_path + r"\command", "", safe["command"], "String", label="context menu action"),
+    ]
+    if safe["icon"]:
+        operations.append(registry_set_operation(base_path, "Icon", safe["icon"], "String", label="context menu action"))
+    if safe["shift_only"]:
+        operations.append(registry_set_operation(base_path, "Extended", "", "String", label="context menu action"))
+    return operations
+
+
+def export_context_menu_action_pack(filepath: str) -> Dict[str, Any]:
+    actions = []
+    for entry in get_context_menu_inventory():
+        if entry["hive"] != "HKCU" or entry["kind"] != "shell" or not entry.get("command"):
+            continue
+        for target, root_path in CONTEXT_MENU_PACK_TARGETS.items():
+            prefix = root_path + "\\"
+            if entry["path"].casefold().startswith(prefix.casefold()):
+                actions.append({
+                    "target": target,
+                    "name": entry["name"],
+                    "label": entry["label"],
+                    "command": entry["command"],
+                    "icon": entry.get("icon") or "",
+                    "shift_only": entry.get("shift_only", False),
+                })
+                break
+    payload = {
+        "app": APP_NAME,
+        "type": CONTEXT_MENU_PACK_TYPE,
+        "version": APP_VERSION,
+        "created_utc": datetime.now(timezone.utc).isoformat(),
+        "actions": actions,
+    }
+    Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+    Path(filepath).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return payload
+
+
+def import_context_menu_action_pack(filepath: str) -> RegistryPlanReport:
+    data = load_preset_from_file(filepath)
+    if not data or data.get("app") != APP_NAME or data.get("type") != CONTEXT_MENU_PACK_TYPE:
+        raise ValueError("Invalid ExplorerTweaks context-menu action pack.")
+    actions = data.get("actions", [])
+    if not isinstance(actions, list):
+        raise ValueError("Context-menu action pack actions must be a list.")
+    operations: List[RegistryOperation] = []
+    for action in actions:
+        operations.extend(context_menu_action_operations(action))
+    return execute_registry_plan(operations, label="context menu action pack")
+
 
 def app_launch_command(focus: str) -> str:
     if getattr(sys, "frozen", False):
@@ -4205,6 +4405,7 @@ class App(ctk.CTk):
         context_text = "Remove Shell Menu" if is_context_menu_installed() else "Install Shell Menu"
         darkmode_text = "Remove Auto Dark" if is_darkmode_auto_switch_installed() else "Install Auto Dark"
         ctk.CTkButton(state_btns, text=context_text, command=self._toggle_context_menu, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=28, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(0, 3))
+        ctk.CTkButton(state_btns, text="Menu Inventory", command=self._export_context_menu_inventory, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=28, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(3, 3))
         ctk.CTkButton(state_btns, text=darkmode_text, command=self._toggle_darkmode_auto_switch, font=ctk.CTkFont(size=10), fg_color=UI["hover"], hover_color=UI["border"], height=28, corner_radius=4).pack(side="left", expand=True, fill="x", padx=(3, 0))
         row += 1
 
@@ -4482,6 +4683,20 @@ class App(ctk.CTk):
             self._refresh_operation_log()
             messagebox.showerror("Shell Menu", "Could not update ExplorerTweaks shell menu.")
 
+    def _export_context_menu_inventory(self):
+        from tkinter import filedialog
+        path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON", "*.json")],
+            initialfile="ExplorerTweaks_context_menu_inventory.json",
+        )
+        if path:
+            try:
+                payload = export_context_menu_inventory(path)
+                messagebox.showinfo("Shell Menu", f"Context-menu inventory saved:\n{path}\n\nEntries: {len(payload['entries'])}")
+            except Exception as exc:
+                messagebox.showerror("Shell Menu", str(exc))
+
     def _toggle_darkmode_auto_switch(self):
         try:
             if is_darkmode_auto_switch_installed():
@@ -4655,6 +4870,12 @@ def main():
     parser.add_argument("--folder-view-restore", metavar="FILE", help="Restore an Explorer folder-view defaults backup")
     parser.add_argument("--folder-view-apply", choices=list(FOLDER_VIEW_PRESETS.keys()), help="Apply Explorer folder-view defaults preset")
     parser.add_argument("--folder-view-backup-before", metavar="FILE", help="Create a folder-view backup before --folder-view-apply")
+    parser.add_argument("--context-menu-list", action="store_true", help="List common registry-backed context-menu entries")
+    parser.add_argument("--context-menu-inventory", metavar="FILE", help="Export common context-menu inventory as JSON")
+    parser.add_argument("--context-menu-disable", metavar="ID", help="Disable a context-menu entry by inventory id using LegacyDisable")
+    parser.add_argument("--context-menu-enable", metavar="ID", help="Enable a context-menu entry by inventory id by removing LegacyDisable")
+    parser.add_argument("--context-menu-export-pack", metavar="FILE", help="Export HKCU shell context-menu actions as a safe action pack")
+    parser.add_argument("--context-menu-import-pack", metavar="FILE", help="Import an ExplorerTweaks context-menu action pack into HKCU shell roots")
     parser.add_argument("--install-context-menu", action="store_true", help="Install ExplorerTweaks right-click shell entries")
     parser.add_argument("--uninstall-context-menu", action="store_true", help="Remove ExplorerTweaks right-click shell entries")
     parser.add_argument("--context-menu-status", action="store_true", help="Print ExplorerTweaks shell integration status")
@@ -4685,6 +4906,48 @@ def main():
         if args.context_menu_status:
             print("installed" if is_context_menu_installed() else "not installed")
             return
+
+        if args.context_menu_list:
+            entries = get_context_menu_inventory()
+            for entry in entries:
+                state = "disabled" if entry["disabled"] else "enabled"
+                print(f"{entry['id']} | {entry['target']} | {entry['kind']} | {state} | {entry['label']}")
+            print(f"Entries: {len(entries)}")
+            return
+
+        if args.context_menu_inventory:
+            payload = export_context_menu_inventory(args.context_menu_inventory)
+            print(f"Exported context-menu inventory: {args.context_menu_inventory}")
+            print(f"Entries: {len(payload['entries'])}")
+            return
+
+        if args.context_menu_disable or args.context_menu_enable:
+            entry_id = args.context_menu_disable or args.context_menu_enable
+            try:
+                set_context_menu_entry_disabled(entry_id, disabled=bool(args.context_menu_disable))
+                print("Context-menu entry disabled." if args.context_menu_disable else "Context-menu entry enabled.")
+                return
+            except Exception as exc:
+                print(f"Error: {exc}")
+                sys.exit(1)
+
+        if args.context_menu_export_pack:
+            payload = export_context_menu_action_pack(args.context_menu_export_pack)
+            print(f"Exported context-menu action pack: {args.context_menu_export_pack}")
+            print(f"Actions: {len(payload['actions'])}")
+            return
+
+        if args.context_menu_import_pack:
+            try:
+                report = import_context_menu_action_pack(args.context_menu_import_pack)
+                print(f"{'[DRY-RUN] ' if DRY_RUN else ''}Imported context-menu action pack.")
+                print(f"Planned: {report.planned}")
+                print(f"Verified: {report.verified}")
+                print(f"Errors: {len(report.errors)}")
+                return
+            except Exception as exc:
+                print(f"Error: {exc}")
+                sys.exit(1)
 
         if args.install_context_menu or args.uninstall_context_menu:
             enabled = args.install_context_menu

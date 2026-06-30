@@ -1,6 +1,6 @@
-# ExplorerTweaks v2.10.0
+# ExplorerTweaks v2.11.0
 
-![Version](https://img.shields.io/badge/Version-2.10.0-1DB954?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.11.0-1DB954?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=for-the-badge&logo=windows)
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)
@@ -22,6 +22,7 @@ ExplorerTweaks is a Windows File Explorer and shell configuration utility with a
 - Windows 11 25H2-aware OS detection and min/max build gates for setting catalog compatibility.
 - Managed policy metadata for mapped settings plus Intune remediation detection/remediation script export.
 - Explorer folder-view defaults preview, backup, restore, and Details/List/Large Icons preset apply.
+- Context-menu inventory, reversible `LegacyDisable` toggles, and HKCU action-pack export/import.
 - PowerShell deployment script export for current-user or all-loaded-user registry hives.
 - PSRemoting profile push for fleets that already have WinRM access configured.
 - Multi-user local apply across `HKU\.DEFAULT` and loaded user SIDs.
@@ -69,6 +70,11 @@ python explorer_tweaks.py --folder-view-preview
 python explorer_tweaks.py --folder-view-backup folder_views.zip
 python explorer_tweaks.py --folder-view-apply details --folder-view-backup-before folder_views.zip
 python explorer_tweaks.py --folder-view-restore folder_views.zip
+python explorer_tweaks.py --context-menu-list
+python explorer_tweaks.py --context-menu-inventory context_menu_inventory.json
+python explorer_tweaks.py --context-menu-disable "HKCU|Software\Classes\Directory\shell\Example"
+python explorer_tweaks.py --context-menu-export-pack context_menu_pack.json
+python explorer_tweaks.py --context-menu-import-pack context_menu_pack.json --dry-run
 python explorer_tweaks.py --install-context-menu
 python explorer_tweaks.py --uninstall-context-menu
 python explorer_tweaks.py --install-darkmode-auto-switch
@@ -100,6 +106,8 @@ Pass `--managed-policy` with PowerShell exports to write mapped HKLM policy keys
 The dark-mode auto-switch installs a per-user scheduled task named `\ExplorerTweaks\DarkModeAutoSwitch`. If Windows Location access is disabled, reinstall with `--darkmode-lat` and `--darkmode-lon`.
 
 Folder-view defaults manage the current user's Explorer Shell Bags defaults. `--folder-view-apply` resets existing folder view bags, writes the selected preset for common folder templates, and should be paired with `--folder-view-backup-before` or the GUI's automatic backup.
+
+Context-menu inventory scans common HKCU/HKLM File, Directory, Background, and Drive shell roots. Disable/enable operations only set or remove `LegacyDisable` on entries under those inventory roots. Action packs import only into approved HKCU shell roots.
 
 ## Registry Locations
 

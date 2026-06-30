@@ -2,6 +2,14 @@
 
 All notable changes to ExplorerTweaks will be documented in this file.
 
+## [v2.11.0] - 2026-06-30
+
+### Added
+- Added context-menu inventory for common HKCU/HKLM File, Directory, Background, and Drive shell roots.
+- Added reversible context-menu enable/disable commands using `LegacyDisable` under managed inventory roots.
+- Added HKCU-only context-menu action-pack export/import with target/name/command validation.
+- Added a GUI Menu Inventory export action and unit coverage for action-pack safety boundaries.
+
 ## [v2.10.0] - 2026-06-30
 
 ### Added
