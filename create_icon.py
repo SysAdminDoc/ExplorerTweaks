@@ -3,7 +3,7 @@
 Icon Generator for ExplorerTweaks
 =================================
 Generates a simple icon file for the application.
-Requires: pip install pillow
+Requires pinned Pillow from requirements.txt.
 
 Run this script to create icon.ico before building.
 """
@@ -11,10 +11,7 @@ Run this script to create icon.ico before building.
 try:
     from PIL import Image, ImageDraw, ImageFont
 except ImportError:
-    print("Pillow not installed. Installing...")
-    import subprocess
-    subprocess.check_call(['pip', 'install', 'pillow'])
-    from PIL import Image, ImageDraw, ImageFont
+    raise SystemExit("Pillow is required. Run: python -m pip install --requirement requirements.txt")
 
 import os
 

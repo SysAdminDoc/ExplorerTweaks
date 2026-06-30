@@ -1,3 +1,5 @@
 # ExplorerTweaks Dependencies
-customtkinter>=5.2.0
-pyinstaller>=6.0.0
+# Exact pins keep GUI and portable EXE builds repeatable.
+customtkinter==6.0.0
+pyinstaller==6.21.0
+pillow==12.2.0

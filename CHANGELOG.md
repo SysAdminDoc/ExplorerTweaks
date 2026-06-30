@@ -2,6 +2,13 @@
 
 All notable changes to ExplorerTweaks will be documented in this file.
 
+## [v2.12.0] - 2026-06-30
+
+### Changed
+- Upgraded and pinned CustomTkinter, PyInstaller, and Pillow for repeatable GUI and portable EXE builds.
+- Routed the build script through pinned requirements, `python -m pip check`, and the active Python interpreter's PyInstaller module.
+- Removed the icon generator's hidden floating dependency install path and documented the dependency upgrade workflow.
+
 ## [v2.11.0] - 2026-06-30
 
 ### Added

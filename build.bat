@@ -8,9 +8,13 @@ setlocal enabledelayedexpansion
 
 echo.
 echo ============================================
-echo   ExplorerTweaks Build Script v2.11.0
+echo   ExplorerTweaks Build Script v2.12.0
 echo ============================================
 echo.
+
+set PIP_DISABLE_PIP_VERSION_CHECK=1
+set BUILD_VENV=.build-venv
+set BUILD_PY=%BUILD_VENV%\Scripts\python.exe
 
 REM Check if Python is installed
 python --version >nul 2>&1
@@ -26,25 +30,38 @@ echo [INFO] Python version: %PYVER%
 echo.
 
 REM Check if pip is available
-pip --version >nul 2>&1
+python -m pip --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] pip is not available.
     exit /b 1
 )
 
-echo [1/5] Installing dependencies...
-pip install -r requirements.txt --quiet
-pip install pillow --quiet
+echo [1/5] Creating pinned build environment...
+if exist "%BUILD_VENV%" rmdir /s /q "%BUILD_VENV%" 2>nul
+
+python -m venv "%BUILD_VENV%"
+if errorlevel 1 (
+    echo [ERROR] Failed to create build virtual environment.
+    exit /b 1
+)
+
+"%BUILD_PY%" -m pip install --requirement requirements.txt --quiet
 
 if errorlevel 1 (
     echo [ERROR] Failed to install dependencies.
-        exit /b 1
+    exit /b 1
+)
+
+"%BUILD_PY%" -m pip check
+if errorlevel 1 (
+    echo [ERROR] Dependency check failed.
+    exit /b 1
 )
 echo       Done.
 
 echo [2/5] Generating application icon...
 if not exist "icon.ico" (
-    python create_icon.py
+    "%BUILD_PY%" create_icon.py
     if errorlevel 1 (
         echo [WARNING] Could not generate icon. Using default.
     ) else (
@@ -63,7 +80,7 @@ echo [4/5] Building executable...
 echo       This may take a few minutes...
 echo.
 
-pyinstaller --noconfirm ExplorerTweaks.spec
+"%BUILD_PY%" -m PyInstaller --noconfirm ExplorerTweaks.spec
 
 if errorlevel 1 (
     echo.
@@ -79,6 +96,7 @@ if errorlevel 1 (
 
 echo [5/5] Cleaning up build artifacts...
 if exist "build" rmdir /s /q build 2>nul
+if exist "%BUILD_VENV%" rmdir /s /q "%BUILD_VENV%" 2>nul
 echo       Done.
 
 REM Get file size

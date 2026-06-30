@@ -9,6 +9,7 @@ build/
 .env
 .venv/
 venv/
+.build-venv/
 *.bak
 CLAUDE.md
 

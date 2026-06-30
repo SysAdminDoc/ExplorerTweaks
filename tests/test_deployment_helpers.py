@@ -13,6 +13,54 @@ from unittest.mock import patch
 import explorer_tweaks as et
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+class BuildRepeatabilityTests(unittest.TestCase):
+    def test_requirements_pin_gui_and_build_dependencies(self):
+        requirements = [
+            line.strip()
+            for line in (REPO_ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        pins = {}
+
+        for requirement in requirements:
+            self.assertIn("==", requirement, f"{requirement} must use an exact version pin")
+            name, version = requirement.split("==", 1)
+            self.assertRegex(version, r"^\d+\.\d+\.\d+$")
+            pins[name.lower()] = version
+
+        self.assertEqual(pins["customtkinter"], "6.0.0")
+        self.assertEqual(pins["pyinstaller"], "6.21.0")
+        self.assertEqual(pins["pillow"], "12.2.0")
+
+    def test_build_script_uses_pinned_environment(self):
+        build_script = (REPO_ROOT / "build.bat").read_text(encoding="utf-8").lower()
+
+        self.assertIn("set build_venv=.build-venv", build_script)
+        self.assertIn("python -m venv", build_script)
+        self.assertIn("-m pip install --requirement requirements.txt", build_script)
+        self.assertIn("-m pip check", build_script)
+        self.assertIn("-m pyinstaller --noconfirm explorertweaks.spec", build_script)
+        self.assertNotIn("pip install pillow", build_script)
+
+    def test_pyinstaller_spec_keeps_runtime_hook_and_version_metadata(self):
+        spec = (REPO_ROOT / "ExplorerTweaks.spec").read_text(encoding="utf-8")
+
+        self.assertIn('runtime_hooks=["assets/runtime_hook_mp.py"]', spec)
+        self.assertIn('version="version_info.txt"', spec)
+        self.assertIn('collect_all("customtkinter")', spec)
+
+    def test_icon_generator_does_not_install_dependencies(self):
+        icon_generator = (REPO_ROOT / "create_icon.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("subprocess.check_call", icon_generator)
+        self.assertNotIn("['pip', 'install'", icon_generator)
+        self.assertNotIn('["pip", "install"', icon_generator)
+        self.assertIn("python -m pip install --requirement requirements.txt", icon_generator)
+
+
 class DeploymentHelperTests(unittest.TestCase):
     def setUp(self):
         et.clear_operation_log()

@@ -3,7 +3,7 @@
 ExplorerTweaks PyInstaller Spec File
 ====================================
 
-Use `pyinstaller ExplorerTweaks.spec` or `build.bat`.
+Use `build.bat` so PyInstaller and GUI dependencies come from pinned requirements.
 """
 
 import os

@@ -1,6 +1,6 @@
-# ExplorerTweaks v2.11.0
+# ExplorerTweaks v2.12.0
 
-![Version](https://img.shields.io/badge/Version-2.11.0-1DB954?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.12.0-1DB954?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=for-the-badge&logo=windows)
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)
@@ -47,6 +47,8 @@ build.bat
 ```
 
 The executable is written to `dist\ExplorerTweaks.exe`.
+
+`requirements.txt` uses exact pins for CustomTkinter, PyInstaller, and Pillow. `build.bat` creates a clean `.build-venv`, installs those pins with `python -m pip install --requirement requirements.txt`, runs `python -m pip check` inside that venv, and then builds through `ExplorerTweaks.spec`. Upgrade dependencies deliberately by changing the pins, running the test suite, rebuilding the EXE, and replacing the release artifact from a clean `dist` directory.
 
 ## CLI Usage
 
@@ -132,6 +134,7 @@ Most settings do not require administrator rights. Multi-user mode can only touc
 ## Development
 
 ```powershell
+python -m pip install --requirement requirements.txt
 python -m unittest discover -s tests -v
 python -m py_compile explorer_tweaks.py
 python explorer_tweaks.py --help

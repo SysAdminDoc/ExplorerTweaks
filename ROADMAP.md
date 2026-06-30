@@ -6,13 +6,6 @@ Backlog for ExplorerTweaks. Goal: stay focused on File Explorer and closely rela
 
 ### P2
 
-- [ ] P2 - Pin and upgrade GUI/build dependencies with repeatable artifacts
-  Why: `requirements.txt` floats CustomTkinter and PyInstaller major behavior, making portable EXE builds non-reproducible.
-  Evidence: `requirements.txt`; PyInstaller changelog; CustomTkinter PyPI release history.
-  Touches: `requirements.txt`, `ExplorerTweaks.spec`, `build.bat`, `tests/test_deployment_helpers.py`
-  Acceptance: Dependencies are pinned, upgrade notes are documented, build uses the pinned environment, and the EXE smoke path is testable without changing app behavior.
-  Complexity: M
-
 - [ ] P2 - Perform accessibility and localization pass
   Why: Custom widget controls, emoji labels, fixed minimum layout, modal-only feedback, and English-only strings limit usability compared with mature utilities that include language options.
   Evidence: `SettingCard`, `NavButton`, Tools page labels; WinSetView and Easy Context Menu language support.
