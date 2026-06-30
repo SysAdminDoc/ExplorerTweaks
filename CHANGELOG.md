@@ -2,6 +2,13 @@
 
 All notable changes to ExplorerTweaks will be documented in this file.
 
+## [v2.14.0] - 2026-06-30
+
+### Added
+- Added release packaging that produces a versioned ZIP, SHA256 manifest, and `INSTALL.txt` alongside the portable EXE.
+- Added conditional Authenticode signing in `build.bat` when a local code-signing certificate is available.
+- Documented install, uninstall, checksum verification, and unsigned-artifact behavior in the README.
+
 ## [v2.13.0] - 2026-06-30
 
 ### Added

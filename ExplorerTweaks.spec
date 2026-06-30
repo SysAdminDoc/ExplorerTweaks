@@ -3,7 +3,7 @@
 ExplorerTweaks PyInstaller Spec File
 ====================================
 
-Use `build.bat` so PyInstaller and GUI dependencies come from pinned requirements.
+Use `build.bat` so PyInstaller, release ZIP, checksums, and signing checks come from one path.
 """
 
 import os

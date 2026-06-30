@@ -1,6 +1,6 @@
-# ExplorerTweaks v2.13.0
+# ExplorerTweaks v2.14.0
 
-![Version](https://img.shields.io/badge/Version-2.13.0-1DB954?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.14.0-1DB954?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=for-the-badge&logo=windows)
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)
@@ -22,6 +22,7 @@ ExplorerTweaks is a Windows File Explorer and shell configuration utility with a
 - Windows 11 25H2-aware OS detection and min/max build gates for setting catalog compatibility.
 - English message catalog for GUI chrome, Tools controls, dialogs, and accessibility labels.
 - Compact 1080px-wide GUI layout with wrapped tool action rows and high-contrast focus outlines.
+- Versioned release ZIP, SHA256 manifest, install notes, and optional Authenticode signing when a code-signing certificate is available.
 - Managed policy metadata for mapped settings plus Intune remediation detection/remediation script export.
 - Explorer folder-view defaults preview, backup, restore, and Details/List/Large Icons preset apply.
 - Context-menu inventory, reversible `LegacyDisable` toggles, and HKCU action-pack export/import.
@@ -51,6 +52,15 @@ build.bat
 The executable is written to `dist\ExplorerTweaks.exe`.
 
 `requirements.txt` uses exact pins for CustomTkinter, PyInstaller, and Pillow. `build.bat` creates a clean `.build-venv`, installs those pins with `python -m pip install --requirement requirements.txt`, runs `python -m pip check` inside that venv, and then builds through `ExplorerTweaks.spec`. Upgrade dependencies deliberately by changing the pins, running the test suite, rebuilding the EXE, and replacing the release artifact from a clean `dist` directory.
+
+Release builds write:
+
+- `dist\ExplorerTweaks.exe`
+- `dist\ExplorerTweaks-vX.Y.Z-win64.zip`
+- `dist\ExplorerTweaks-vX.Y.Z-SHA256SUMS.txt`
+- `dist\INSTALL.txt`
+
+Install by running the portable EXE directly or extracting the versioned ZIP to a folder you control. Uninstall by using Tools > Remove Shell Menu and Tools > Remove Auto Dark if those integrations were installed, then delete the EXE or extracted folder. Verify downloads with `Get-FileHash -Algorithm SHA256 ExplorerTweaks.exe` and compare against the SHA256 manifest. If a code-signing certificate is available in the local certificate store, `build.bat` signs the EXE before hashing and packaging; otherwise it records a warning and continues with unsigned artifacts.
 
 ## CLI Usage
 

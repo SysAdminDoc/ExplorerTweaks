@@ -38,12 +38,31 @@ class BuildRepeatabilityTests(unittest.TestCase):
     def test_build_script_uses_pinned_environment(self):
         build_script = (REPO_ROOT / "build.bat").read_text(encoding="utf-8").lower()
 
+        self.assertIn("set app_version=2.14.0", build_script)
         self.assertIn("set build_venv=.build-venv", build_script)
+        self.assertIn("set generated_icon=0", build_script)
         self.assertIn("python -m venv", build_script)
         self.assertIn("-m pip install --requirement requirements.txt", build_script)
         self.assertIn("-m pip check", build_script)
         self.assertIn("-m pyinstaller --noconfirm explorertweaks.spec", build_script)
+        self.assertIn('if "%generated_icon%"=="1" if exist "icon.ico" del /q "icon.ico"', build_script)
         self.assertNotIn("pip install pillow", build_script)
+
+    def test_build_script_creates_release_trust_artifacts(self):
+        build_script = (REPO_ROOT / "build.bat").read_text(encoding="utf-8").lower()
+
+        self.assertIn("set release_basename=explorertweaks-v%app_version%-win64", build_script)
+        self.assertIn("set checksum_file=explorertweaks-v%app_version%-sha256sums.txt", build_script)
+        self.assertIn("set zip_file=%release_basename%.zip", build_script)
+        self.assertIn("set-authenticodesignature", build_script)
+        self.assertIn("no code-signing cert found; skipping signing", build_script)
+        self.assertIn("install.txt", build_script)
+        self.assertIn("$notes = @(('explorertweaks v' + $env:app_version)", build_script)
+        self.assertIn("('run get-filehash -algorithm sha256 explorertweaks.exe and compare it with ' + $env:checksum_file + '.')", build_script)
+        self.assertIn("function get-sha256hex", build_script)
+        self.assertIn("system.security.cryptography.sha256", build_script)
+        self.assertIn("compress-archive", build_script)
+        self.assertNotIn("tools > remove", build_script)
 
     def test_pyinstaller_spec_keeps_runtime_hook_and_version_metadata(self):
         spec = (REPO_ROOT / "ExplorerTweaks.spec").read_text(encoding="utf-8")
