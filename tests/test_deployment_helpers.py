@@ -38,7 +38,7 @@ class BuildRepeatabilityTests(unittest.TestCase):
     def test_build_script_uses_pinned_environment(self):
         build_script = (REPO_ROOT / "build.bat").read_text(encoding="utf-8").lower()
 
-        self.assertIn("set app_version=2.14.0", build_script)
+        self.assertIn("set app_version=2.15.0", build_script)
         self.assertIn("set build_venv=.build-venv", build_script)
         self.assertIn("set generated_icon=0", build_script)
         self.assertIn("python -m venv", build_script)

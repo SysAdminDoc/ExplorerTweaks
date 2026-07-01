@@ -2,6 +2,29 @@
 
 All notable changes to ExplorerTweaks will be documented in this file.
 
+## [v2.15.0] - 2026-06-30
+
+### Fixed
+- Replaced 7 bare `except:` clauses with specific exception types to avoid catching `SystemExit` and `KeyboardInterrupt`.
+- Fixed registry key handle leak in `get_registry_value` when `QueryValueEx` raises a non-`FileNotFoundError`.
+- Fixed `is_photo_viewer_registered` key handle leak by moving `CloseKey` into a `finally` block.
+- Fixed GUI crash when importing a malformed JSON profile file.
+- Fixed `IndexError` crash when Windows returns a search mode value outside the expected 0-2 range.
+- Fixed search clear leaving the GUI stuck on an empty search results page instead of restoring the previous category.
+- Fixed live preview not reflecting actual system state for 6 settings (silent installs, Bing search, Cortana, search history, End Task menu, Aero Peek) that were hardcoded to defaults.
+- Fixed `windows_cmd_quote` using incorrect `\"` escaping instead of Windows-correct `""` for registry shell commands.
+- Fixed `.reg` export crash when a registry value is not directly `int`-compatible by adding explicit `int()` cast.
+- Fixed JSON export and CLI export performing duplicate registry reads for each setting.
+- Fixed diff view silently excluding Classic Context Menu and Search Mode from comparison results.
+- Fixed `save_preset_to_file` omitting settings that haven't been explicitly written to registry; now includes all settings using their default values.
+- Fixed `cli_apply` exiting with code 0 even when zero settings were applied; now exits 1 with a warning.
+- Fixed `restore_backup_bundle` silently skipping wallpaper restore when target directory no longer exists; now logs a warning and increments the error count.
+- Fixed `rollback_registry_operation` crash when snapshot is `None` for `delete_tree` operations.
+- Fixed `execute_registry_plan` fragile error-path variable scoping by initializing the result before the try block.
+- Added error handling to GUI Export, Export .reg, and Export .ps1 actions for file write failures.
+- Fixed `create_icon.py` `import math` inside inner loop and `create_simple_icon` missing `append_images` so all ICO sizes are included.
+- Added 9 regression tests covering error handling, rollback safety, preset save completeness, and cmd quoting.
+
 ## [v2.14.0] - 2026-06-30
 
 ### Added

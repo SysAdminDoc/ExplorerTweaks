@@ -34,7 +34,7 @@ from enum import Enum
 from pathlib import Path
 
 APP_NAME = "ExplorerTweaks"
-APP_VERSION = "2.14.0"
+APP_VERSION = "2.15.0"
 DARKMODE_TASK_NAME = r"\ExplorerTweaks\DarkModeAutoSwitch"
 DARKMODE_SCRIPT_NAME = "darkmode_auto_switch.ps1"
 APP_MIN_WIDTH = 1080

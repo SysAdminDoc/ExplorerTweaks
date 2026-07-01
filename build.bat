@@ -6,7 +6,7 @@ REM ============================================================================
 
 setlocal enabledelayedexpansion
 
-set APP_VERSION=2.14.0
+set APP_VERSION=2.15.0
 set RELEASE_BASENAME=ExplorerTweaks-v%APP_VERSION%-win64
 set CHECKSUM_FILE=ExplorerTweaks-v%APP_VERSION%-SHA256SUMS.txt
 set ZIP_FILE=%RELEASE_BASENAME%.zip

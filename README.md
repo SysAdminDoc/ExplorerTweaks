@@ -1,6 +1,6 @@
-# ExplorerTweaks v2.14.0
+# ExplorerTweaks v2.15.0
 
-![Version](https://img.shields.io/badge/Version-2.14.0-1DB954?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.15.0-1DB954?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=for-the-badge&logo=windows)
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)
