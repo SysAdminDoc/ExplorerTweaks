@@ -817,7 +817,8 @@ def rollback_registry_operation(result: RegistryOperationResult) -> None:
         return
     if operation.action == "delete_tree":
         delete_registry_tree(operation.hive, operation.path)
-        restore_registry_tree_snapshot(operation.hive, snapshot)
+        if snapshot:
+            restore_registry_tree_snapshot(operation.hive, snapshot)
         return
     raise RegistryOperationError(f"Unsupported registry operation: {operation.action}")
 
@@ -960,9 +961,9 @@ def execute_registry_plan(
         return remember_registry_plan_report(report)
 
     for operation in operations:
+        result = RegistryOperationResult(operation, None)
         try:
-            snapshot = capture_registry_operation_snapshot(operation)
-            result = RegistryOperationResult(operation, snapshot)
+            result.snapshot = capture_registry_operation_snapshot(operation)
             apply_registry_operation(operation)
             result.applied = True
             if not verify_registry_operation(operation):
@@ -970,8 +971,6 @@ def execute_registry_plan(
             result.verified = True
             report.results.append(result)
         except Exception as exc:
-            if "result" not in locals() or result.operation is not operation:
-                result = RegistryOperationResult(operation, None)
             if not any(item is result for item in report.results):
                 report.results.append(result)
             result.error = str(exc)
@@ -4787,8 +4786,11 @@ class App(ctk.CTk):
             initialfile="ExplorerTweaks_settings.reg"
         )
         if path:
-            export_reg_file(self.settings, path)
-            messagebox.showinfo("Export", f"Registry file saved:\n{path}\n\nDouble-click to import on any PC.")
+            try:
+                export_reg_file(self.settings, path)
+                messagebox.showinfo("Export", f"Registry file saved:\n{path}\n\nDouble-click to import on any PC.")
+            except OSError as exc:
+                messagebox.showerror("Export", f"Could not write file:\n{exc}")
 
     def _export_ps1(self, all_users: bool = False):
         from tkinter import filedialog
@@ -4799,9 +4801,12 @@ class App(ctk.CTk):
             initialfile=initial,
         )
         if path:
-            export_ps1_file(self.settings, path, all_users=all_users)
-            mode = "all loaded users by default" if all_users else "current user by default"
-            messagebox.showinfo("Export", f"PowerShell deployment script saved:\n{path}\n\nMode: {mode}.")
+            try:
+                export_ps1_file(self.settings, path, all_users=all_users)
+                mode = "all loaded users by default" if all_users else "current user by default"
+                messagebox.showinfo("Export", f"PowerShell deployment script saved:\n{path}\n\nMode: {mode}.")
+            except OSError as exc:
+                messagebox.showerror("Export", f"Could not write file:\n{exc}")
 
     def _backup_bundle(self):
         from tkinter import filedialog
@@ -4959,9 +4964,12 @@ class App(ctk.CTk):
                     data[s.id] = val
             data["_classic"] = SpecialSettings.get_classic_context_menu()
             data["_search"] = SpecialSettings.get_search_mode()
-            with open(path, 'w', encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            messagebox.showinfo("Export", f"Saved:\n{path}")
+            try:
+                with open(path, 'w', encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+                messagebox.showinfo("Export", f"Saved:\n{path}")
+            except OSError as exc:
+                messagebox.showerror("Export", f"Could not write file:\n{exc}")
     
     def _import(self):
         from tkinter import filedialog

@@ -753,6 +753,36 @@ class CorrectnessTests(unittest.TestCase):
             result = labels[min(mode, 2)]
             self.assertIn(result, labels)
 
+    def test_rollback_handles_null_snapshot_for_delete_tree(self):
+        operation = et.registry_delete_tree_operation(r"Software\ExplorerTweaks\NonExistent_TestKey_12345")
+        result = et.RegistryOperationResult(operation, None, applied=True)
+        et.rollback_registry_operation(result)
+
+    def test_save_preset_includes_default_value_settings(self):
+        setting = et.RegistrySetting(
+            id="test_preset_save",
+            name="Test Preset Save",
+            description="Test",
+            category="Test",
+            subcategory="Test",
+            reg_path=r"Software\ExplorerTweaks\NonExistent_TestKey_12345",
+            reg_name="TestValue",
+            reg_type="DWORD",
+            enable_value=1,
+            disable_value=0,
+            default_value=0,
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
+            filepath = f.name
+
+        et.save_preset_to_file("Test", "desc", [setting], filepath)
+        data = json.loads(Path(filepath).read_text(encoding="utf-8"))
+
+        self.assertIn("test_preset_save", data["settings"])
+        self.assertFalse(data["settings"]["test_preset_save"])
+        Path(filepath).unlink(missing_ok=True)
+
     def test_reg_file_export_casts_dword_to_int(self):
         setting = et.RegistrySetting(
             id="test_export",
