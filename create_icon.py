@@ -79,11 +79,10 @@ def create_icon():
             fill=folder_color,
         )
         
-        # Gear teeth (simplified as small rectangles)
         if size >= 32:
+            import math
             tooth_size = max(2, gear_radius // 3)
             for angle in range(0, 360, 45):
-                import math
                 rad = math.radians(angle)
                 tx = gear_x + int(gear_radius * 0.9 * math.cos(rad))
                 ty = gear_y + int(gear_radius * 0.9 * math.sin(rad))
@@ -152,10 +151,11 @@ def create_simple_icon():
         images.append(img)
     
     icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'icon.ico')
-    images[-1].save(
+    images[0].save(
         icon_path,
         format='ICO',
         sizes=[(s, s) for s in sizes],
+        append_images=images[1:],
     )
     
     print(f"Simple icon created: {icon_path}")

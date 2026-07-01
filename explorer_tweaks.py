@@ -2225,6 +2225,14 @@ def restore_backup_bundle(filepath: str) -> Dict[str, int]:
                     shutil.copy2(source, original)
                     set_registry_value(r"Control Panel\Desktop", "WallPaper", original, "String")
                     results["files_restored"] += 1
+                else:
+                    log_operation(
+                        "restore",
+                        "warning",
+                        f"Wallpaper target directory does not exist: {original_dir}",
+                        original_path=original,
+                    )
+                    results["errors"] += 1
 
         pins = metadata.get("taskbar_pins")
         if pins:
@@ -2968,7 +2976,6 @@ def apply_preset(preset_settings: dict, all_settings: List, os_version) -> int:
     return apply_profile_values(preset_settings, all_settings, os_version)
 
 def save_preset_to_file(name: str, description: str, settings: List, filepath: str):
-    """Save current settings as a user preset JSON file."""
     preset = {
         "name": name,
         "description": description,
@@ -2977,9 +2984,9 @@ def save_preset_to_file(name: str, description: str, settings: List, filepath: s
     }
     for s in settings:
         val = get_registry_value(s.reg_path, s.reg_name)
-        if val is not None:
-            enabled = (val == s.enable_value)
-            preset["settings"][s.id] = enabled
+        if val is None:
+            val = s.default_value
+        preset["settings"][s.id] = (val == s.enable_value)
 
     preset["settings"]["classic_context_menu"] = SpecialSettings.get_classic_context_menu()
     preset["settings"]["search_mode"] = SpecialSettings.get_search_mode()
@@ -5002,6 +5009,9 @@ def cli_apply(profile_path: str, dry_run: bool = False, multi_user: bool = False
     count = apply_profile_values(settings_dict, all_s, os_ver, multi_user=multi_user)
 
     print(f"\n{'[DRY-RUN] ' if dry_run else ''}Applied {count} setting(s).")
+    if count == 0 and not dry_run:
+        print("Warning: No settings were applied. Check that the profile contains valid setting IDs.")
+        sys.exit(1)
     if not dry_run:
         print("Targeted shell refresh sent where supported. Restart Explorer manually only if a view does not repaint.")
 
