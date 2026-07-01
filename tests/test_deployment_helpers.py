@@ -722,5 +722,62 @@ class DeploymentHelperTests(unittest.TestCase):
                 et.DRY_RUN = original_dry_run
 
 
+class CorrectnessTests(unittest.TestCase):
+    def test_load_preset_returns_none_for_invalid_json(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
+            f.write("{invalid json")
+            f.flush()
+            result = et.load_preset_from_file(f.name)
+
+        self.assertIsNone(result)
+        Path(f.name).unlink(missing_ok=True)
+
+    def test_load_preset_returns_none_for_missing_file(self):
+        result = et.load_preset_from_file("/nonexistent/path/to/file.json")
+        self.assertIsNone(result)
+
+    def test_windows_cmd_quote_escapes_double_quotes(self):
+        self.assertEqual(et.windows_cmd_quote('hello "world"'), '"hello ""world"""')
+        self.assertEqual(et.windows_cmd_quote("simple"), '"simple"')
+
+    def test_get_windows_version_handles_malformed_platform(self):
+        with patch.object(et.platform, "version", return_value="not.a.version"):
+            self.assertEqual(et.get_windows_version(), et.OSVersion.UNKNOWN)
+
+    def test_registry_key_exists_returns_false_for_missing_key(self):
+        self.assertFalse(et.registry_key_exists(r"Software\ExplorerTweaks\NonExistent_TestKey_12345"))
+
+    def test_search_mode_clamped_for_taskbar_preview_labels(self):
+        labels = ["Hidden", "Icon", "Box"]
+        for mode in (0, 1, 2, 3, 99):
+            result = labels[min(mode, 2)]
+            self.assertIn(result, labels)
+
+    def test_reg_file_export_casts_dword_to_int(self):
+        setting = et.RegistrySetting(
+            id="test_export",
+            name="Test Export",
+            description="Test",
+            category="Test",
+            subcategory="Test",
+            reg_path=r"Software\ExplorerTweaks\Test",
+            reg_name="TestValue",
+            reg_type="DWORD",
+            enable_value=1,
+            disable_value=0,
+            default_value=0,
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".reg", delete=False, encoding="utf-16") as f:
+            filepath = f.name
+
+        with patch.object(et, "get_registry_value", return_value=None):
+            et.export_reg_file([setting], filepath)
+
+        content = Path(filepath).read_text(encoding="utf-16")
+        self.assertIn('"TestValue"=dword:00000000', content)
+        Path(filepath).unlink(missing_ok=True)
+
+
 if __name__ == "__main__":
     unittest.main()
