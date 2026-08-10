@@ -1,12 +1,8 @@
 # ROADMAP
 
-Backlog for ExplorerTweaks. Goal: stay focused on File Explorer and closely related shell surfaces such as taskbar, context menus, and search.
+Actionable work only. Historical and completed roadmap material is archived in CHANGELOG.md; blocked work is kept in Roadmap_Blocked.md.
 
-## Research-Driven Additions
-
-No open items.
-
-## Audit-Driven Items
+## Actionable Items
 
 - [ ] P2 — Split dark_system and dark_apps into separate preview fields
   Why: Both map to preview_key="dark_mode", so toggling one overwrites the other's preview state; the live preview shows a single dark/light mode that doesn't reflect Windows' split system-vs-app theming.
