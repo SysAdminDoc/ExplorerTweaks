@@ -209,8 +209,8 @@ EXP_LIGHT = {
     "border": "#e5e5e5",
 }
 
-# Windows 11 Taskbar Colors
-TASKBAR = {
+# Windows 11 Taskbar Colors (system theme)
+TASKBAR_DARK = {
     "bg": "#1c1c1c", "bg_glass": "#1c1c1c",
     "item_hover": "#ffffff1a", "item_active": "#ffffff26",
     "indicator": "#0078d4", "indicator_inactive": "#ffffff4d",
@@ -218,6 +218,16 @@ TASKBAR = {
     "search_bg": "#2c2c2c", "search_border": "#454545", "search_text": "#999999",
     "tray_hover": "#ffffff1a",
 }
+TASKBAR_LIGHT = {
+    "bg": "#f3f3f3", "bg_glass": "#f3f3f3",
+    "item_hover": "#0000001a", "item_active": "#00000012",
+    "indicator": "#0078d4", "indicator_inactive": "#0000004d",
+    "text": "#1f1f1f", "text_dim": "#666666",
+    "search_bg": "#ffffff", "search_border": "#d1d1d1", "search_text": "#666666",
+    "tray_hover": "#0000001a",
+}
+# Keep the original name available for callers that only need the dark palette.
+TASKBAR = TASKBAR_DARK
 
 
 class OSVersion(Enum):
@@ -268,9 +278,11 @@ class PreviewState:
     taskbar_animations: bool = True
     aero_peek: bool = True
     disable_thumb_cache: bool = False
+    disable_network_thumbs: bool = False
     snap_assist: bool = True
     snap_layouts: bool = True
-    dark_mode: bool = True
+    dark_system: bool = True
+    dark_apps: bool = True
     show_gallery: bool = True
     classic_context_menu: bool = False
 
@@ -3093,15 +3105,15 @@ def get_all_settings() -> List[RegistrySetting]:
             info="Hovering over the far-right taskbar corner makes windows transparent to show the desktop."),
         RegistrySetting("disable_thumb_cache", "Disable Thumb Cache", "No thumbnail storage.", "Performance", "Thumbnails", ADV, "DisableThumbnailCache", "DWORD", 1, 0, 0, preview_key="disable_thumb_cache",
             info="Stops caching thumbnails to disk. Saves space but slows browsing image-heavy folders."),
-        RegistrySetting("disable_network_thumbs", "No Network Thumbs", "No thumbs.db on network.", "Performance", "Thumbnails", ADV, "DisableThumbsDBOnNetworkFolders", "DWORD", 1, 0, 0,
+        RegistrySetting("disable_network_thumbs", "No Network Thumbs", "No thumbs.db on network.", "Performance", "Thumbnails", ADV, "DisableThumbsDBOnNetworkFolders", "DWORD", 1, 0, 0, preview_key="disable_network_thumbs",
             info="Prevents creating thumbs.db cache files on network drives. Avoids lock/permission issues."),
         RegistrySetting("snap_assist", "Snap Assist", "Window suggestions.", "Performance", "Snapping", ADV, "SnapAssist", "DWORD", 1, 0, 1, preview_key="snap_assist",
             info="After snapping a window, suggests other windows to fill the remaining space."),
         RegistrySetting("snap_layouts", "Snap Layouts", "Layout grid.", "Performance", "Snapping", ADV, "EnableSnapBar", "DWORD", 1, 0, 1, min_os=OSVersion.WINDOWS_11_21H2, preview_key="snap_layouts",
             info="Hovering over the maximize button shows layout options for arranging windows."),
-        RegistrySetting("dark_system", "Dark System", "Dark taskbar/Start.", "Theme", "Mode", THEME, "SystemUsesLightTheme", "DWORD", 0, 1, 1, inverted=True, preview_key="dark_mode",
+        RegistrySetting("dark_system", "Dark System", "Dark taskbar/Start.", "Theme", "Mode", THEME, "SystemUsesLightTheme", "DWORD", 0, 1, 1, inverted=True, preview_key="dark_system",
             info="Applies dark theme to Windows chrome: taskbar, Start menu, Action Center, and notifications.", refresh_strategy=REFRESH_THEME_BROADCAST),
-        RegistrySetting("dark_apps", "Dark Apps", "Dark app windows.", "Theme", "Mode", THEME, "AppsUseLightTheme", "DWORD", 0, 1, 1, inverted=True, preview_key="dark_mode",
+        RegistrySetting("dark_apps", "Dark Apps", "Dark app windows.", "Theme", "Mode", THEME, "AppsUseLightTheme", "DWORD", 0, 1, 1, inverted=True, preview_key="dark_apps",
             info="Applies dark theme to app windows (Settings, Explorer, UWP apps). Independent of system theme.", refresh_strategy=REFRESH_THEME_BROADCAST),
         RegistrySetting("show_gallery", "Gallery", "Photo gallery in nav.", "Windows 11", "Nav Pane", ADV, "ShowGallery", "DWORD", 1, 0, 1, min_os=OSVersion.WINDOWS_11_23H2, preview_key="show_gallery",
             info="Shows the Gallery view in the navigation pane for quick access to your photos."),
@@ -3145,7 +3157,7 @@ class Win11Explorer(ctk.CTkFrame):
     
     def _c(self, key):
         """Get color from theme."""
-        return (EXP_DARK if self.state.dark_mode else EXP_LIGHT).get(key, "#ff00ff")
+        return (EXP_DARK if self.state.dark_apps else EXP_LIGHT).get(key, "#ff00ff")
     
     def _build(self):
         # Window frame with border
@@ -3472,10 +3484,14 @@ class Win11Taskbar(ctk.CTkFrame):
     """Pixel-accurate Windows 11 Taskbar simulation."""
     
     def __init__(self, parent, state: PreviewState):
-        super().__init__(parent, fg_color=TASKBAR["bg"], height=48, corner_radius=0)
+        super().__init__(parent, fg_color=(TASKBAR_DARK if state.dark_system else TASKBAR_LIGHT)["bg"], height=48, corner_radius=0)
         self.state = state
         self.pack_propagate(False)
         self._build()
+
+    def _c(self, key):
+        """Get a taskbar color from the system theme."""
+        return (TASKBAR_DARK if self.state.dark_system else TASKBAR_LIGHT).get(key, "#ff00ff")
     
     def _build(self):
         # System tray (right side)
@@ -3486,7 +3502,10 @@ class Win11Taskbar(ctk.CTkFrame):
         tray_frame = ctk.CTkFrame(self.tray, fg_color="transparent")
         tray_frame.pack(side="right")
         
-        ctk.CTkLabel(tray_frame, text="^", font=ctk.CTkFont(size=10), text_color=TASKBAR["text"]).pack(side="left", padx=4)
+        self._tray_text_labels = []
+        tray_text = ctk.CTkLabel(tray_frame, text="^", font=ctk.CTkFont(size=10), text_color=self._c("text"))
+        tray_text.pack(side="left", padx=4)
+        self._tray_text_labels.append(tray_text)
         ctk.CTkLabel(tray_frame, text="🔊", font=ctk.CTkFont(size=12)).pack(side="left", padx=4)
         ctk.CTkLabel(tray_frame, text="📶", font=ctk.CTkFont(size=11)).pack(side="left", padx=4)
         ctk.CTkLabel(tray_frame, text="🔋", font=ctk.CTkFont(size=11)).pack(side="left", padx=4)
@@ -3494,13 +3513,18 @@ class Win11Taskbar(ctk.CTkFrame):
         # Date/Time
         dt_frame = ctk.CTkFrame(self.tray, fg_color="transparent")
         dt_frame.pack(side="right", padx=8)
-        ctk.CTkLabel(dt_frame, text="10:30 AM", font=ctk.CTkFont(size=10), text_color=TASKBAR["text"]).pack()
-        ctk.CTkLabel(dt_frame, text="1/27/2026", font=ctk.CTkFont(size=10), text_color=TASKBAR["text"]).pack()
+        for text in ("10:30 AM", "1/27/2026"):
+            label = ctk.CTkLabel(dt_frame, text=text, font=ctk.CTkFont(size=10), text_color=self._c("text"))
+            label.pack()
+            self._tray_text_labels.append(label)
         
         # Main icons container
         self.icons_container = ctk.CTkFrame(self, fg_color="transparent")
     
     def update(self):
+        self.configure(fg_color=self._c("bg"))
+        for label in self._tray_text_labels:
+            label.configure(text_color=self._c("text"))
         self.icons_container.pack_forget()
         for w in self.icons_container.winfo_children():
             w.destroy()
@@ -3518,38 +3542,38 @@ class Win11Taskbar(ctk.CTkFrame):
         start = ctk.CTkFrame(icons, fg_color="transparent", width=44, height=40)
         start.pack(side="left", padx=2)
         start.pack_propagate(False)
-        ctk.CTkLabel(start, text="⊞", font=ctk.CTkFont(size=22), text_color=TASKBAR["text"]).pack(expand=True)
+        ctk.CTkLabel(start, text="⊞", font=ctk.CTkFont(size=22), text_color=self._c("text")).pack(expand=True)
         
         # Search
         if self.state.search_mode == 2:
             # Full search box
-            search = ctk.CTkFrame(icons, fg_color=TASKBAR["search_bg"], corner_radius=20, width=200, height=36, border_width=1, border_color=TASKBAR["search_border"])
+            search = ctk.CTkFrame(icons, fg_color=self._c("search_bg"), corner_radius=20, width=200, height=36, border_width=1, border_color=self._c("search_border"))
             search.pack(side="left", padx=4)
             search.pack_propagate(False)
             sf = ctk.CTkFrame(search, fg_color="transparent")
             sf.pack(expand=True)
             ctk.CTkLabel(sf, text="🔍", font=ctk.CTkFont(size=13)).pack(side="left", padx=(16, 6))
-            ctk.CTkLabel(sf, text="Search", font=ctk.CTkFont(size=12), text_color=TASKBAR["search_text"]).pack(side="left")
+            ctk.CTkLabel(sf, text="Search", font=ctk.CTkFont(size=12), text_color=self._c("search_text")).pack(side="left")
         elif self.state.search_mode == 1:
             # Search icon only
             si = ctk.CTkFrame(icons, fg_color="transparent", width=44, height=40)
             si.pack(side="left", padx=2)
             si.pack_propagate(False)
-            ctk.CTkLabel(si, text="🔍", font=ctk.CTkFont(size=16), text_color=TASKBAR["text"]).pack(expand=True)
+            ctk.CTkLabel(si, text="🔍", font=ctk.CTkFont(size=16), text_color=self._c("text")).pack(expand=True)
         
         # Task View
         if self.state.taskview_button:
             tv = ctk.CTkFrame(icons, fg_color="transparent", width=44, height=40)
             tv.pack(side="left", padx=2)
             tv.pack_propagate(False)
-            ctk.CTkLabel(tv, text="⧉", font=ctk.CTkFont(size=16), text_color=TASKBAR["text"]).pack(expand=True)
+            ctk.CTkLabel(tv, text="⧉", font=ctk.CTkFont(size=16), text_color=self._c("text")).pack(expand=True)
         
         # Widgets
         if self.state.widgets_button:
             wg = ctk.CTkFrame(icons, fg_color="transparent", width=44, height=40)
             wg.pack(side="left", padx=2)
             wg.pack_propagate(False)
-            ctk.CTkLabel(wg, text="☀", font=ctk.CTkFont(size=18), text_color=TASKBAR["text"]).pack(expand=True)
+            ctk.CTkLabel(wg, text="☀", font=ctk.CTkFont(size=18), text_color=self._c("text")).pack(expand=True)
         
         # Separator
         ctk.CTkFrame(icons, fg_color="#444444", width=1, height=24).pack(side="left", padx=8, pady=8)
@@ -3558,7 +3582,7 @@ class Win11Taskbar(ctk.CTkFrame):
         apps = [("📁", True, "File Explorer"), ("🌐", False, "Edge"), ("📝", False, "Notepad"), ("🎵", False, "Spotify")]
         
         for emoji, active, name in apps:
-            app = ctk.CTkFrame(icons, fg_color=TASKBAR["item_active"] if active else "transparent", width=44, height=40, corner_radius=4)
+            app = ctk.CTkFrame(icons, fg_color=self._c("item_active") if active else "transparent", width=44, height=40, corner_radius=4)
             app.pack(side="left", padx=2)
             app.pack_propagate(False)
             
@@ -3566,7 +3590,7 @@ class Win11Taskbar(ctk.CTkFrame):
             
             # Active indicator
             if active:
-                ind = ctk.CTkFrame(app, fg_color=TASKBAR["indicator"], width=20, height=3, corner_radius=1)
+                ind = ctk.CTkFrame(app, fg_color=self._c("indicator"), width=20, height=3, corner_radius=1)
                 ind.place(relx=0.5, rely=0.92, anchor="center")
 
 
@@ -3774,6 +3798,7 @@ class PerformancePreview(BasePreview):
             ("Taskbar Animations", self.state.taskbar_animations),
             ("Aero Peek", self.state.aero_peek),
             ("Thumbnail Cache", not self.state.disable_thumb_cache),
+            ("Network Thumbs", not self.state.disable_network_thumbs),
             ("Snap Assist", self.state.snap_assist),
             ("Snap Layouts", self.state.snap_layouts),
         ]:
@@ -3787,33 +3812,30 @@ class ThemePreview(BasePreview):
     def __init__(self, parent, state: PreviewState):
         super().__init__(parent, state)
         ctk.CTkLabel(self, text="Theme Preview", font=ctk.CTkFont(size=14, weight="bold"), text_color=UI["text"]).pack(anchor="w", padx=10, pady=(10, 6))
-        
-        comp = ctk.CTkFrame(self, fg_color="transparent")
-        comp.pack(fill="x", padx=6, pady=(0, 6))
-        comp.grid_columnconfigure(0, weight=1)
-        comp.grid_columnconfigure(1, weight=1)
-        
-        # Dark
-        dark = ctk.CTkFrame(comp, fg_color=EXP_DARK["content_bg"], corner_radius=6)
-        dark.grid(row=0, column=0, sticky="nsew", padx=(0, 3), pady=4)
-        ctk.CTkFrame(dark, fg_color=EXP_DARK["titlebar"], height=20, corner_radius=0).pack(fill="x")
-        ctk.CTkLabel(dark, text="📁 Folder", font=ctk.CTkFont(size=10), text_color=EXP_DARK["content_text"]).pack(anchor="w", padx=8, pady=2)
-        ctk.CTkLabel(dark, text="📄 File.txt", font=ctk.CTkFont(size=10), text_color=EXP_DARK["content_text"]).pack(anchor="w", padx=8, pady=2)
-        ctk.CTkLabel(dark, text="DARK", font=ctk.CTkFont(size=10, weight="bold"), text_color="#fff").pack(pady=4)
-        
-        # Light
-        light = ctk.CTkFrame(comp, fg_color=EXP_LIGHT["content_bg"], corner_radius=6)
-        light.grid(row=0, column=1, sticky="nsew", padx=(3, 0), pady=4)
-        ctk.CTkFrame(light, fg_color=EXP_LIGHT["titlebar"], height=20, corner_radius=0).pack(fill="x")
-        ctk.CTkLabel(light, text="📁 Folder", font=ctk.CTkFont(size=10), text_color=EXP_LIGHT["content_text"]).pack(anchor="w", padx=8, pady=2)
-        ctk.CTkLabel(light, text="📄 File.txt", font=ctk.CTkFont(size=10), text_color=EXP_LIGHT["content_text"]).pack(anchor="w", padx=8, pady=2)
-        ctk.CTkLabel(light, text="LIGHT", font=ctk.CTkFont(size=10, weight="bold"), text_color="#000").pack(pady=4)
-        
+        self.comparison = ctk.CTkFrame(self, fg_color="transparent")
+        self.comparison.pack(fill="x", padx=6, pady=(0, 6))
+        self.comparison.grid_columnconfigure(0, weight=1)
+        self.comparison.grid_columnconfigure(1, weight=1)
         self.status = ctk.CTkLabel(self, text="", font=ctk.CTkFont(size=12, weight="bold"))
         self.status.pack(pady=(6, 10))
-    
+
+    def _render_card(self, column, title, palette, background_key, titlebar_key, text_key, is_dark):
+        card = ctk.CTkFrame(self.comparison, fg_color=palette[background_key], corner_radius=6)
+        card.grid(row=0, column=column, sticky="nsew", padx=(0, 3) if column == 0 else (3, 0), pady=4)
+        ctk.CTkFrame(card, fg_color=palette[titlebar_key], height=20, corner_radius=0).pack(fill="x")
+        ctk.CTkLabel(card, text=title, font=ctk.CTkFont(size=10, weight="bold"), text_color=palette[text_key]).pack(anchor="w", padx=8, pady=(4, 1))
+        ctk.CTkLabel(card, text="📁 Folder", font=ctk.CTkFont(size=10), text_color=palette[text_key]).pack(anchor="w", padx=8, pady=1)
+        ctk.CTkLabel(card, text="📄 File.txt", font=ctk.CTkFont(size=10), text_color=palette[text_key]).pack(anchor="w", padx=8, pady=1)
+        ctk.CTkLabel(card, text="DARK" if is_dark else "LIGHT", font=ctk.CTkFont(size=10, weight="bold"), text_color=palette[text_key]).pack(pady=4)
+
     def update(self):
-        self.status.configure(text="Current: DARK MODE" if self.state.dark_mode else "Current: LIGHT MODE", text_color=UI["accent"] if self.state.dark_mode else UI["text"])
+        for child in self.comparison.winfo_children():
+            child.destroy()
+        self._render_card(0, "System UI", TASKBAR_DARK if self.state.dark_system else TASKBAR_LIGHT, "bg", "bg_glass", "text", self.state.dark_system)
+        self._render_card(1, "App Windows", EXP_DARK if self.state.dark_apps else EXP_LIGHT, "content_bg", "titlebar", "content_text", self.state.dark_apps)
+        system_mode = "DARK" if self.state.dark_system else "LIGHT"
+        app_mode = "DARK" if self.state.dark_apps else "LIGHT"
+        self.status.configure(text=f"System UI: {system_mode}  |  App windows: {app_mode}", text_color=UI["accent"] if self.state.dark_system or self.state.dark_apps else UI["text"])
 
 
 class Windows11Preview(BasePreview):
@@ -4098,10 +4120,13 @@ class App(ctk.CTk):
         self.preview_state.taskbar_animations = gb(adv, "TaskbarAnimations", 1, True)
         self.preview_state.aero_peek = gb(dwm, "EnableAeroPeek", 1, True)
         self.preview_state.disable_thumb_cache = gb(adv, "DisableThumbnailCache", 1, False)
+        self.preview_state.disable_network_thumbs = gb(adv, "DisableThumbsDBOnNetworkFolders", 1, False)
         self.preview_state.snap_assist = gb(adv, "SnapAssist", 1, True)
         self.preview_state.snap_layouts = gb(adv, "EnableSnapBar", 1, True)
-        light = get_registry_value(theme, "AppsUseLightTheme")
-        self.preview_state.dark_mode = (light == 0) if light is not None else True
+        system_light = get_registry_value(theme, "SystemUsesLightTheme")
+        self.preview_state.dark_system = (system_light == 0) if system_light is not None else True
+        apps_light = get_registry_value(theme, "AppsUseLightTheme")
+        self.preview_state.dark_apps = (apps_light == 0) if apps_light is not None else True
         if self.os_version in [OSVersion.WINDOWS_11_23H2, OSVersion.WINDOWS_11_24H2, OSVersion.WINDOWS_11_25H2]:
             self.preview_state.show_gallery = gb(adv, "ShowGallery", 1, True)
         else:

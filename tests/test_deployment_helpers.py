@@ -361,6 +361,11 @@ class DeploymentHelperTests(unittest.TestCase):
 
         self.assertEqual(settings["dark_system"].refresh_strategy, et.REFRESH_THEME_BROADCAST)
         self.assertEqual(settings["dark_apps"].refresh_strategy, et.REFRESH_THEME_BROADCAST)
+        self.assertEqual(settings["dark_system"].preview_key, "dark_system")
+        self.assertEqual(settings["dark_apps"].preview_key, "dark_apps")
+        self.assertEqual(settings["disable_network_thumbs"].preview_key, "disable_network_thumbs")
+        self.assertFalse(hasattr(et.PreviewState(), "dark_mode"))
+        self.assertFalse(et.PreviewState().disable_network_thumbs)
         self.assertEqual(settings["show_extensions"].refresh_strategy, et.REFRESH_SHELL_NOTIFY)
 
     def test_windows_version_detects_24h2_and_25h2_builds(self):
