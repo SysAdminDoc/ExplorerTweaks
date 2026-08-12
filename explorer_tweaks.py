@@ -2524,6 +2524,8 @@ CONTEXT_MENU_PACK_TARGETS = {
     "drives": r"Software\Classes\Drive\shell",
 }
 CONTEXT_MENU_ACTION_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_. -]{1,64}$")
+CONTEXT_MENU_ACTION_ICON_INDEX_PATTERN = re.compile(r"^-?\d+$")
+CONTEXT_MENU_ACTION_ICON_MAX_LENGTH = 2048
 
 
 def iter_registry_subkeys(hive: int, path: str) -> List[str]:
@@ -2621,6 +2623,58 @@ def set_context_menu_entry_disabled(entry_id: str, disabled: bool) -> bool:
     return execute_registry_plan([operation], label="context menu visibility").success
 
 
+def validate_context_menu_icon(icon: Any) -> str:
+    """Validate a shell icon location without requiring the target file to exist.
+
+    Windows shell icon locations use ``module-or-path[,signed-index]``.  A
+    leading ``@`` is accepted for indirect resource references, and a quoted
+    path is accepted when it contains spaces.  The registry value is still
+    treated as data: command separators and control characters are rejected.
+    """
+    if icon is None:
+        return ""
+    if not isinstance(icon, str):
+        raise ValueError("Context-menu action icon must be a string.")
+    if len(icon) > CONTEXT_MENU_ACTION_ICON_MAX_LENGTH:
+        raise ValueError("Context-menu action icon is too long.")
+    if any(ord(char) < 0x20 or ord(char) == 0x7F for char in icon):
+        raise ValueError("Unsafe context-menu action icon: control characters are not allowed.")
+
+    value = icon.strip()
+    if not value:
+        return ""
+
+    if value.startswith("@"):
+        value = value[1:]
+    if not value:
+        raise ValueError("Unsafe context-menu action icon: missing icon path.")
+
+    path, separator, index = value.rpartition(",")
+    if separator:
+        index = index.strip()
+        if not CONTEXT_MENU_ACTION_ICON_INDEX_PATTERN.fullmatch(index):
+            raise ValueError(f"Unsafe context-menu action icon index: {index}")
+        try:
+            numeric_index = int(index)
+        except ValueError:
+            raise ValueError(f"Unsafe context-menu action icon index: {index}") from None
+        if not -(2 ** 31) <= numeric_index <= (2 ** 31) - 1:
+            raise ValueError(f"Context-menu action icon index is out of range: {index}")
+    else:
+        path = value
+
+    path = path.strip()
+    if path.startswith('"') or path.endswith('"'):
+        if len(path) < 2 or not (path.startswith('"') and path.endswith('"')):
+            raise ValueError("Unsafe context-menu action icon: unbalanced quotes.")
+        path = path[1:-1]
+    if not path or '"' in path or "," in path:
+        raise ValueError("Unsafe context-menu action icon path.")
+    if any(char in path for char in "|<>^") or "://" in path:
+        raise ValueError("Unsafe context-menu action icon path.")
+    return icon.strip()
+
+
 def validate_context_menu_action(action: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(action, dict):
         raise ValueError("Context-menu action must be an object.")
@@ -2628,7 +2682,7 @@ def validate_context_menu_action(action: Dict[str, Any]) -> Dict[str, Any]:
     name = str(action.get("name", "")).strip()
     label = str(action.get("label", name)).strip()
     command = str(action.get("command", "")).strip()
-    icon = str(action.get("icon", "")).strip()
+    icon = validate_context_menu_icon(action.get("icon", ""))
     if target not in CONTEXT_MENU_PACK_TARGETS:
         raise ValueError(f"Unsupported context-menu action target: {target}")
     if not CONTEXT_MENU_ACTION_NAME_PATTERN.match(name):

@@ -26,6 +26,7 @@ All notable changes to ExplorerTweaks will be documented in this file.
 - Added 9 regression tests covering error handling, rollback safety, preset save completeness, and cmd quoting.
 - Split the live theme preview into independent system-UI and app-window modes so toggling one no longer overwrites the other.
 - Added live Performance preview feedback for network thumbnail caching.
+- Validated context-menu action-pack icon locations before writing them to the registry, including signed resource indexes and control-character checks.
 
 ## [v2.14.0] - 2026-06-30
 

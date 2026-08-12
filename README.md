@@ -121,7 +121,7 @@ The dark-mode auto-switch installs a per-user scheduled task named `\ExplorerTwe
 
 Folder-view defaults manage the current user's Explorer Shell Bags defaults. `--folder-view-apply` resets existing folder view bags, writes the selected preset for common folder templates, and should be paired with `--folder-view-backup-before` or the GUI's automatic backup.
 
-Context-menu inventory scans common HKCU/HKLM File, Directory, Background, and Drive shell roots. Disable/enable operations only set or remove `LegacyDisable` on entries under those inventory roots. Action packs import only into approved HKCU shell roots.
+Context-menu inventory scans common HKCU/HKLM File, Directory, Background, and Drive shell roots. Disable/enable operations only set or remove `LegacyDisable` on entries under those inventory roots. Action packs import only into approved HKCU shell roots. Action-pack `icon` values must use a Windows shell icon location such as `shell32.dll,1`, `%SystemRoot%\System32\imageres.dll,-102`, or a path to an `.ico` file; the target file is not required to exist during import.
 
 ## Registry Locations
 

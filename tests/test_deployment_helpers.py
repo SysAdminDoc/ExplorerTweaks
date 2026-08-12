@@ -500,6 +500,44 @@ class DeploymentHelperTests(unittest.TestCase):
                 }
             )
 
+    def test_context_menu_action_validates_icon_location(self):
+        base_action = {
+            "target": "files",
+            "name": "OpenTools",
+            "label": "Open Tools",
+            "command": r"explorer.exe %V",
+        }
+        for icon in (
+            "shell32.dll,1",
+            r"%SystemRoot%\System32\imageres.dll,-102",
+            r'"C:\Program Files\Example\example.exe",0',
+            r"C:\Icons\example.ico",
+            r"@%SystemRoot%\System32\shell32.dll,-16769",
+        ):
+            action = dict(base_action, icon=icon)
+            self.assertEqual(et.validate_context_menu_action(action)["icon"], icon)
+
+        invalid_icons = (
+            "shell32.dll,",
+            "shell32.dll,index",
+            ",1",
+            '"C:\\Icons\\shell32.dll,1',
+            "shell32.dll,2147483648",
+            "shell32.dll\r\nmalicious",
+            "shell32.dll|cmd.exe,1",
+            "https://example.invalid/icon.dll,0",
+        )
+        for icon in invalid_icons:
+            with self.subTest(icon=icon), self.assertRaises(ValueError):
+                et.validate_context_menu_action(dict(base_action, icon=icon))
+
+        with self.assertRaises(ValueError):
+            et.validate_context_menu_action(dict(base_action, icon=123))
+
+        oversized = "a" * (et.CONTEXT_MENU_ACTION_ICON_MAX_LENGTH + 1)
+        with self.assertRaises(ValueError):
+            et.validate_context_menu_action(dict(base_action, icon=oversized))
+
     def test_context_menu_entry_id_must_stay_under_inventory_roots(self):
         self.assertTrue(
             et.is_context_menu_inventory_path(
