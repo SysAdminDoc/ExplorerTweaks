@@ -1,0 +1,9 @@
+Use case: ads-marketing
+Asset type: a professional GitHub repository share card for ExplorerTweaks, wide landscape 1280x640.
+Input image 1: approved existing logo, supporting insert, identity must remain unchanged. This blue folder with two horizontal slider controls is the owner's selected identity, not a request to redesign it.
+Primary request: compose an understated, professionally art-directed software share card using this existing mark and clear editorial typography. The product is a Windows Explorer settings utility, not a replacement file manager.
+Scene/backdrop: deep near-black charcoal matching a dark desktop app. Quiet negative space. No visual clutter.
+Subject: the supplied blue folder-controls logo, flat front-facing and proportional, with its original blue gradient, navy interior, green upper slider knob and pale-cyan lower knob. Use the entire mark uncropped. No added effects or reinterpretation of its geometry.
+Composition/framing: wide, generous 80px safe margins. Balance a large but not overwhelming mark with highly legible brand name and short descriptor. Keep the text hierarchy disciplined and professional at small social thumbnail sizes.
+Text verbatim: "ExplorerTweaks" as the primary name; "Windows Explorer settings, in one place." as a smaller descriptor; "Windows 10 & 11" as a restrained footer.
+Constraints: preserve the approved logo's identity exactly; do not invent a new logo, other icons, UI mockups, screenshots, claims, testimonials, badges, awards, version numbers or buttons. No bevels, neon aura, floor reflections, giant glow, wires, circuit patterns or watermark. Excellent typography and spacing, ready for a serious software company's brand review. Opaque background.

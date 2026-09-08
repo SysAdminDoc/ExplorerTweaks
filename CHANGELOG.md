@@ -2,14 +2,24 @@
 
 All notable changes to ExplorerTweaks will be documented in this file.
 
-## [v2.16.0] - 2026-08-12
+## ExplorerTweaks v2.16.1 (2026-09-08)
+
+- Applied the selected folder-controls identity and preserved the original logo studies.
+- Fixed Taskbar preview colors that Tk could not render and corrected inverted file-extension and thumbnail preview states.
+- Made search and immediate-apply behavior visible in the sidebar. Kept the existing category layout.
+- Synchronized the executable's numeric and text version fields.
+- Replaced the unsupported setting count and privacy claims with descriptions of the actual catalog.
+- Added isolated sample captures and a verified offline ZIP with dependency licenses.
+- Stopped policy-locked switches after their warning instead of attempting a registry write.
+
+## [v2.16.0] (2026-08-12)
 
 ### Fixed
 - Split the live theme preview into independent system-UI and app-window modes so toggling one no longer overwrites the other.
 - Added live Performance preview feedback for network thumbnail caching.
 - Validated context-menu action-pack icon locations before writing them to the registry, including signed resource indexes and control-character checks.
 
-## [v2.15.0] - 2026-06-30
+## [v2.15.0] (2026-06-30)
 
 ### Fixed
 - Replaced 7 bare `except:` clauses with specific exception types to avoid catching `SystemExit` and `KeyboardInterrupt`.
@@ -32,28 +42,28 @@ All notable changes to ExplorerTweaks will be documented in this file.
 - Fixed `create_icon.py` `import math` inside inner loop and `create_simple_icon` missing `append_images` so all ICO sizes are included.
 - Added 9 regression tests covering error handling, rollback safety, preset save completeness, and cmd quoting.
 
-## [v2.14.0] - 2026-06-30
+## [v2.14.0] (2026-06-30)
 
 ### Added
 - Added release packaging that produces a versioned ZIP, SHA256 manifest, and `INSTALL.txt` alongside the portable EXE.
 - Added conditional Authenticode signing in `build.bat` when a local code-signing certificate is available.
 - Documented install, uninstall, checksum verification, and unsigned-artifact behavior in the README.
 
-## [v2.13.0] - 2026-06-30
+## [v2.13.0] (2026-06-30)
 
 ### Added
 - Added an English GUI message catalog for app chrome, Tools controls, common dialogs, and accessibility labels.
 - Added accessibility metadata and high-contrast focus outlines for navigation buttons, shared cards, switches, radio controls, search, and the operation log.
 - Added compact 1080px-wide layout support with wrapped Tools action grids and tests for localization/accessibility layout contracts.
 
-## [v2.12.0] - 2026-06-30
+## [v2.12.0] (2026-06-30)
 
 ### Changed
 - Upgraded and pinned CustomTkinter, PyInstaller, and Pillow for repeatable GUI and portable EXE builds.
 - Routed the build script through pinned requirements, `python -m pip check`, and the active Python interpreter's PyInstaller module.
 - Removed the icon generator's hidden floating dependency install path and documented the dependency upgrade workflow.
 
-## [v2.11.0] - 2026-06-30
+## [v2.11.0] (2026-06-30)
 
 ### Added
 - Added context-menu inventory for common HKCU/HKLM File, Directory, Background, and Drive shell roots.
@@ -61,7 +71,7 @@ All notable changes to ExplorerTweaks will be documented in this file.
 - Added HKCU-only context-menu action-pack export/import with target/name/command validation.
 - Added a GUI Menu Inventory export action and unit coverage for action-pack safety boundaries.
 
-## [v2.10.0] - 2026-06-30
+## [v2.10.0] (2026-06-30)
 
 ### Added
 - Added Explorer folder-view defaults preview for common folder templates.
@@ -69,7 +79,7 @@ All notable changes to ExplorerTweaks will be documented in this file.
 - Added Details, List, and Large Icons folder-view presets with CLI and GUI apply paths.
 - Added tests for folder-view registry operation planning, preview summaries, and backup validation.
 
-## [v2.9.0] - 2026-06-30
+## [v2.9.0] (2026-06-30)
 
 ### Added
 - Added policy/CSP metadata for mapped Explorer, Search, and CloudContent settings.
@@ -77,7 +87,7 @@ All notable changes to ExplorerTweaks will be documented in this file.
 - Added `--export-intune-remediation PROFILE DIR` to generate Intune detection and remediation PowerShell script pairs.
 - Added unit coverage for policy entry conversion, managed-policy script output, and Intune remediation export.
 
-## [v2.8.0] - 2026-06-30
+## [v2.8.0] (2026-06-30)
 
 ### Added
 - Added Windows 11 25H2 detection for OS build `26200` and later.
@@ -86,7 +96,7 @@ All notable changes to ExplorerTweaks will be documented in this file.
 ### Fixed
 - Unsupported settings filtered by OS min/max gates now show a category notice instead of disappearing silently.
 
-## [v2.7.0] - 2026-06-28
+## [v2.7.0] (2026-06-28)
 
 ### Added
 - Added a persistent GUI operation log/status panel in the preview column.
@@ -96,7 +106,7 @@ All notable changes to ExplorerTweaks will be documented in this file.
 ### Fixed
 - Registry plan failures now serialize hive, path, action, error, and recovery hint details for diagnostics.
 
-## [v2.6.0] - 2026-06-28
+## [v2.6.0] (2026-06-28)
 
 ### Added
 - Added refresh strategy metadata for registry-backed settings.
@@ -106,7 +116,7 @@ All notable changes to ExplorerTweaks will be documented in this file.
 ### Fixed
 - Replaced default "restart Explorer" completion guidance with targeted-refresh status in GUI and CLI apply flows.
 
-## [v2.5.0] - 2026-06-28
+## [v2.5.0] (2026-06-28)
 
 ### Added
 - Added a shared registry plan/apply/verify/rollback engine for local settings writes.
@@ -117,14 +127,14 @@ All notable changes to ExplorerTweaks will be documented in this file.
 - Replaced backup restore `reg import` calls with parsed registry operations so restores can verify writes and roll back captured prior values on partial failure.
 - Added PyInstaller multiprocessing freeze guards and a runtime hook so the portable EXE starts without recursive worker relaunch risk.
 
-## [v2.4.1] - 2026-06-28
+## [v2.4.1] (2026-06-28)
 
 ### Fixed
 - Hardened backup restore ZIP validation before extraction or registry import.
 - Rejected unsafe restore archives with parent-directory paths, absolute paths, duplicate manifests, non-whitelisted registry keys, and unexpected payload files.
 - Added restore-bundle validation coverage for malicious archives and valid v2.4.0-compatible bundles.
 
-## [v2.4.0] - 2026-06-27
+## [v2.4.0] (2026-06-27)
 
 ### Added
 - PowerShell deployment export for current-user and all-loaded-user registry hives.
@@ -140,7 +150,7 @@ All notable changes to ExplorerTweaks will be documented in this file.
 - Made JSON profile loading tolerate UTF-8 BOMs from PowerShell-generated files.
 - Fixed `.reg` export encoding to emit a valid UTF-16 registry file.
 
-## [v2.3.0] - 2026-06-19
+## [v2.3.0] (2026-06-19)
 
 ### Added
 - CLI mode: `--apply`, `--preset`, `--export`, `--dry-run`, `--wipe-recent`, `--list-presets`
@@ -170,7 +180,7 @@ All notable changes to ExplorerTweaks will be documented in this file.
 - Add screenshot to README
 - Add files via upload
 
-## Roadmap archive — 2026-08-10 — ROADMAP.md
+## Roadmap archive (2026-08-10, ROADMAP.md)
 
 <details>
 <summary>Original roadmap snapshot</summary>

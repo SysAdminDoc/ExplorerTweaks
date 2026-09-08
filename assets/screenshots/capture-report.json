@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "product": "ExplorerTweaks",
+  "version": "2.16.1",
+  "sampleData": true,
+  "privateDesktop": true,
+  "systemCommands": false,
+  "sourceFiles": [
+    {
+      "path": "explorer_tweaks.py",
+      "bytes": 260986,
+      "sha256": "2c90a05ba485c6962d7d86c7299e233e465319dfe4e506e08e2baa098deff1ab"
+    },
+    {
+      "path": "tools/capture_marketing.py",
+      "bytes": 8585,
+      "sha256": "d10c66e340f47a8c65f1e5527aca7f082963fb65cd8edad3cb114bdc4e3f58ef"
+    },
+    {
+      "path": "requirements.txt",
+      "bytes": 144,
+      "sha256": "7e6b1b6d5c7e9096222ac1e73533b6a451064033e9d56f2d84fbd7284e585f0e"
+    },
+    {
+      "path": "ExplorerTweaks.spec",
+      "bytes": 1707,
+      "sha256": "c8fb8f08b813a8a4fe6ddada9a4d257595901b472f62dcbe3f6d5291cc5d49cb"
+    },
+    {
+      "path": "assets/runtime_hook_mp.py",
+      "bytes": 57,
+      "sha256": "2f26725d04c87f6555a12d3873aa774fdfaebb38505a9e137e292aa452c769b4"
+    },
+    {
+      "path": "branding/icon.ico",
+      "bytes": 73509,
+      "sha256": "62fb30426cedcf414c21ec6ac4d3594e25923ecd066c0ae6827a3480b3fc0943"
+    },
+    {
+      "path": "branding/icon-128.png",
+      "bytes": 13022,
+      "sha256": "3dbc8265bbe257b5eb710657e9d2ca569992d3a6ab6890b969d2676209051058"
+    }
+  ],
+  "captures": [
+    {
+      "file": "01-appearance.png",
+      "category": "Appearance",
+      "width": 1600,
+      "height": 1000,
+      "bytes": 110918,
+      "sha256": "1766fdf3056b02ca9f08be49a34b64fde74851e088bd4ecf829d070980f827a9"
+    },
+    {
+      "file": "02-navigation.png",
+      "category": "Navigation",
+      "width": 1600,
+      "height": 1000,
+      "bytes": 99232,
+      "sha256": "9f7eceab09463c50f338f461271c6257222e16702f5258b2c89d0ea59fbb012e"
+    },
+    {
+      "file": "03-taskbar.png",
+      "category": "Taskbar",
+      "width": 1600,
+      "height": 1000,
+      "bytes": 70788,
+      "sha256": "4749d239b99d66311519902b7e8fcbb72d6f7926ad8a82a35473e2358dcecf1c"
+    },
+    {
+      "file": "04-theme.png",
+      "category": "Theme",
+      "width": 1600,
+      "height": 1000,
+      "bytes": 50481,
+      "sha256": "d42c2ce96e60296efa6c4e9be4ed17dea37d9d0b8bc774ea620f436751998a4f"
+    },
+    {
+      "file": "05-tools.png",
+      "category": "Tools",
+      "width": 1600,
+      "height": 1000,
+      "bytes": 62580,
+      "sha256": "b5a815193fd848b99ecc54bbf711d21cefa3cbceb10f8c4e8dd96fa6a31ad9b6"
+    }
+  ],
+  "layouts": [
+    {
+      "component": "Taskbar",
+      "width": 756,
+      "tray": 167,
+      "icons": 493
+    }
+  ],
+  "exercised": [
+    "category navigation",
+    "search",
+    "search restoration",
+    "file-extension switch",
+    "setting explanation",
+    "dry-run registry plan"
+  ],
+  "executableSha256": "a24714c7519ea3836d47fa07862d7253e9ee28ba35e4731860e9885c85ddbe01"
+}

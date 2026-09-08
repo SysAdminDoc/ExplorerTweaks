@@ -6,18 +6,19 @@ ExplorerTweaks PyInstaller Spec File
 Use `build.bat` so PyInstaller, release ZIP, checksums, and signing checks come from one path.
 """
 
-import os
+from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
 
 customtkinter_datas, customtkinter_binaries, customtkinter_hiddenimports = collect_all("customtkinter")
-icon_file = "icon.ico" if os.path.exists("icon.ico") else None
-icon_datas = [("icon.ico", ".")] if icon_file else []
+icon_file = "branding/icon.ico"
+if not Path(icon_file).is_file():
+    raise FileNotFoundError("Export the approved icon with create_icon.py before building.")
 
 a = Analysis(
     ["explorer_tweaks.py"],
     pathex=[],
     binaries=customtkinter_binaries,
-    datas=customtkinter_datas + icon_datas,
+    datas=customtkinter_datas + [("branding", "branding"), ("build/build-provenance.json", ".")],
     hiddenimports=customtkinter_hiddenimports + [
         "customtkinter",
         "tkinter",
@@ -33,7 +34,7 @@ a = Analysis(
         "numpy",
         "pandas",
         "scipy",
-        "PIL",
+
         "cv2",
         "PyQt5",
         "PyQt6",
@@ -56,7 +57,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,

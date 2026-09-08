@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ExplorerTweaks v2.14.0 - Windows File Explorer Configuration Utility
+ExplorerTweaks v2.16.1 - Windows File Explorer Configuration Utility
 Pixel-accurate Windows 11 File Explorer and Taskbar simulation.
 
 Author: SysAdminDoc
@@ -11,13 +11,18 @@ import multiprocessing
 multiprocessing.freeze_support()
 
 import ctypes
+import sys
+from tools.capture_marketing import prepare as prepare_marketing_capture
+
+prepare_marketing_capture(sys.argv)
+
 import customtkinter as ctk
 from tkinter import messagebox
+from PIL import Image
 import winreg
 import platform
 import subprocess
 import json
-import sys
 import os
 import argparse
 import atexit
@@ -34,12 +39,12 @@ from enum import Enum
 from pathlib import Path
 
 APP_NAME = "ExplorerTweaks"
-APP_VERSION = "2.16.0"
+APP_VERSION = "2.16.1"
 DARKMODE_TASK_NAME = r"\ExplorerTweaks\DarkModeAutoSwitch"
 DARKMODE_SCRIPT_NAME = "darkmode_auto_switch.ps1"
 APP_MIN_WIDTH = 1080
 APP_MIN_HEIGHT = 680
-SIDEBAR_WIDTH = 180
+SIDEBAR_WIDTH = 200
 PREVIEW_WIDTH = 420
 SETTING_WRAP_LENGTH = 300
 
@@ -68,8 +73,8 @@ GUI_MESSAGES = {
     "en": {
         "app.sidebar_title": "{app}",
         "search.placeholder": "Search settings...",
-        "preview.default": "Preview",
-        "preview.category": "{category} Preview",
+        "preview.default": "Illustrated preview",
+        "preview.category": "{category} illustration",
         "operation_log.title": "Operation Log",
         "status.ready": "Ready.",
         "status.no_operations": "No operations yet.",
@@ -212,19 +217,19 @@ EXP_LIGHT = {
 # Windows 11 Taskbar Colors (system theme)
 TASKBAR_DARK = {
     "bg": "#1c1c1c", "bg_glass": "#1c1c1c",
-    "item_hover": "#ffffff1a", "item_active": "#ffffff26",
-    "indicator": "#0078d4", "indicator_inactive": "#ffffff4d",
+    "item_hover": "#333333", "item_active": "#3e3e3e",
+    "indicator": "#0078d4", "indicator_inactive": "#616161",
     "text": "#ffffff", "text_dim": "#999999",
     "search_bg": "#2c2c2c", "search_border": "#454545", "search_text": "#999999",
-    "tray_hover": "#ffffff1a",
+    "tray_hover": "#333333",
 }
 TASKBAR_LIGHT = {
     "bg": "#f3f3f3", "bg_glass": "#f3f3f3",
-    "item_hover": "#0000001a", "item_active": "#00000012",
-    "indicator": "#0078d4", "indicator_inactive": "#0000004d",
+    "item_hover": "#dadada", "item_active": "#e2e2e2",
+    "indicator": "#0078d4", "indicator_inactive": "#aaaaaa",
     "text": "#1f1f1f", "text_dim": "#666666",
     "search_bg": "#ffffff", "search_border": "#d1d1d1", "search_text": "#666666",
-    "tray_hover": "#0000001a",
+    "tray_hover": "#dadada",
 }
 # Keep the original name available for callers that only need the dark palette.
 TASKBAR = TASKBAR_DARK
@@ -3003,7 +3008,7 @@ def is_darkmode_auto_switch_installed() -> bool:
 
 BUILTIN_PRESETS = {
     "Minimal": {
-        "description": "Clean, distraction-free Explorer. Hides clutter, disables ads.",
+        "description": "A compact view with fewer recent items and suggestions.",
         "settings": {
             "show_extensions": True, "show_hidden": False, "show_system": False,
             "colored_encrypted": False, "show_checkboxes": False, "compact_mode": True,
@@ -3014,7 +3019,7 @@ BUILTIN_PRESETS = {
         }
     },
     "Privacy": {
-        "description": "Maximum privacy. Disables tracking, telemetry, and ads.",
+        "description": "Reduce recent-item tracking and selected Windows suggestions.",
         "settings": {
             "show_recent": False, "show_frequent": False, "track_docs": False,
             "track_apps": False, "sync_notifications": False, "silent_installs": False,
@@ -3023,7 +3028,7 @@ BUILTIN_PRESETS = {
         }
     },
     "Power User": {
-        "description": "Show everything. Extensions, hidden files, full paths, classic menus.",
+        "description": "Show extensions and hidden files. Keep protected system files hidden.",
         "settings": {
             "show_extensions": True, "show_hidden": True, "show_system": False,
             "colored_encrypted": True, "show_checkboxes": True, "compact_mode": True,
@@ -3568,7 +3573,7 @@ class Win11Taskbar(ctk.CTkFrame):
         dt_frame = ctk.CTkFrame(self.tray, fg_color="transparent")
         dt_frame.pack(side="right", padx=8)
         for text in ("10:30 AM", "1/27/2026"):
-            label = ctk.CTkLabel(dt_frame, text=text, font=ctk.CTkFont(size=10), text_color=self._c("text"))
+            label = ctk.CTkLabel(dt_frame, text=text, height=14, font=ctk.CTkFont(size=10), text_color=self._c("text"))
             label.pack()
             self._tray_text_labels.append(label)
         
@@ -3990,6 +3995,8 @@ class SettingCard(ctk.CTkFrame):
                 msg("dialog.group_policy_lock.title"),
                 msg("dialog.group_policy_lock.message", name=self.setting.name)
             )
+            self._load_state()
+            return
         enabled = self.switch_var.get()
         val = self.setting.enable_value if enabled else self.setting.disable_value
         set_registry_value(self.setting.reg_path, self.setting.reg_name, val, self.setting.reg_type)
@@ -4069,6 +4076,9 @@ class App(ctk.CTk):
         self.geometry("1500x850")
         self.minsize(APP_MIN_WIDTH, APP_MIN_HEIGHT)
         self.configure(fg_color=UI["bg"])
+        self._asset_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+        icon_path = self._asset_root / "branding/icon.ico"
+        self.after(250, lambda: self.iconbitmap(str(icon_path)))
         
         self.os_version = get_windows_version()
         self.preview_state = PreviewState()
@@ -4088,6 +4098,7 @@ class App(ctk.CTk):
 
     def _button(self, parent, text_key: Optional[str] = None, command=None, text: Optional[str] = None, **kwargs):
         label = text if text is not None else msg(text_key)
+        kwargs.setdefault("width", 0)
         button = ctk.CTkButton(parent, text=label, command=command, **kwargs)
         return make_accessible(button, msg("access.button", label=label), "button", outline=True)
 
@@ -4134,13 +4145,13 @@ class App(ctk.CTk):
             r = (v == ev) if v is not None else default
             return not r if inv else r
         
-        self.preview_state.show_extensions = gb(adv, "HideFileExt", 0, False, True)
+        self.preview_state.show_extensions = gb(adv, "HideFileExt", 0, False)
         self.preview_state.show_hidden = gb(adv, "Hidden", 1, False)
         self.preview_state.show_system = gb(adv, "ShowSuperHidden", 1, False)
         self.preview_state.show_checkboxes = gb(adv, "AutoCheckSelect", 1, False)
         self.preview_state.colored_encrypted = gb(adv, "ShowEncryptCompressedColor", 1, False)
         self.preview_state.compact_mode = gb(adv, "UseCompactMode", 1, False)
-        self.preview_state.show_thumbnails = gb(adv, "IconsOnly", 0, True, True)
+        self.preview_state.show_thumbnails = gb(adv, "IconsOnly", 0, True)
         self.preview_state.show_type_overlay = gb(adv, "ShowTypeOverlay", 1, True)
         self.preview_state.show_status_bar = gb(adv, "ShowStatusBar", 1, True)
         self.preview_state.full_row_select = gb(adv, "FullRowSelect", 1, True)
@@ -4203,7 +4214,7 @@ class App(ctk.CTk):
     def _build_ui(self):
         self.grid_columnconfigure(0, weight=0, minsize=SIDEBAR_WIDTH)
         self.grid_columnconfigure(1, weight=1, minsize=360)
-        self.grid_columnconfigure(2, weight=0, minsize=PREVIEW_WIDTH)
+        self.grid_columnconfigure(2, weight=2, minsize=PREVIEW_WIDTH)
         self.grid_rowconfigure(0, weight=1)
         self._build_sidebar()
         self._build_settings()
@@ -4214,10 +4225,16 @@ class App(ctk.CTk):
         sidebar.grid(row=0, column=0, sticky="nsew")
         sidebar.grid_propagate(False)
 
-        ctk.CTkLabel(sidebar, text=f"🛠 {APP_NAME}", font=ctk.CTkFont(size=16, weight="bold"), text_color=UI["text"]).pack(anchor="w", padx=12, pady=(16, 2))
+        brand_row = ctk.CTkFrame(sidebar, fg_color="transparent")
+        brand_row.pack(fill="x", padx=12, pady=(16, 2))
+        with Image.open(self._asset_root / "branding/icon-128.png") as mark:
+            self._brand_image = ctk.CTkImage(light_image=mark.copy(), dark_image=mark.copy(), size=(30, 30))
+        ctk.CTkLabel(brand_row, image=self._brand_image, text="").pack(side="left", padx=(0, 6))
+        ctk.CTkLabel(brand_row, text=APP_NAME, font=ctk.CTkFont(size=15, weight="bold"), text_color=UI["text"]).pack(side="left")
         ctk.CTkLabel(sidebar, text=f"v{APP_VERSION}", font=ctk.CTkFont(size=9), text_color=UI["text_dim"]).pack(anchor="w", padx=12)
 
         # Search bar
+        ctk.CTkLabel(sidebar, text=msg("access.search").removesuffix(" field"), font=ctk.CTkFont(size=10), text_color=UI["text_sec"]).pack(anchor="w", padx=12, pady=(8, 0))
         self.search_var = ctk.StringVar()
         self.search_var.trace_add("write", self._on_search)
         self.search_entry = ctk.CTkEntry(
@@ -4228,7 +4245,8 @@ class App(ctk.CTk):
             text_color=UI["text"], placeholder_text_color=UI["text_dim"]
         )
         make_accessible(self.search_entry, msg("access.search"), "search")
-        self.search_entry.pack(fill="x", padx=10, pady=(8, 4))
+        self.search_entry.pack(fill="x", padx=10, pady=(2, 4))
+        ctk.CTkLabel(sidebar, text="Switches apply immediately", font=ctk.CTkFont(size=9), text_color=UI["text_sec"]).pack(anchor="w", padx=12, pady=(0, 2))
 
         ctk.CTkFrame(sidebar, fg_color=UI["border"], height=1).pack(fill="x", padx=12, pady=6)
 
@@ -5174,6 +5192,7 @@ def main():
         description="Windows File Explorer Configuration Utility",
     )
     parser.add_argument("--version", action="version", version=f"ExplorerTweaks v{APP_VERSION}")
+    parser.add_argument("--marketing-capture", help=argparse.SUPPRESS)
     parser.add_argument("--apply", metavar="PROFILE", help="Apply a JSON profile (preset or exported settings)")
     parser.add_argument("--preset", metavar="NAME", help="Apply a built-in preset (Minimal, Privacy, Power User)")
     parser.add_argument("--export", metavar="FILE", help="Export current settings to JSON or .reg file")
@@ -5217,6 +5236,10 @@ def main():
         global DRY_RUN
         clear_operation_log()
         DRY_RUN = args.dry_run
+        if args.marketing_capture:
+            from tools.capture_marketing import capture
+            capture(sys.modules[__name__])
+            return
         if args.dry_run_report:
             log_operation("cli", "started", "CLI command started.", arguments=vars(args))
             atexit.register(write_operation_report, args.dry_run_report)

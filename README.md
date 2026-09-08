@@ -1,66 +1,81 @@
-# ExplorerTweaks v2.16.0
+<p align="center">
+  <img src="branding/icon-256.png" alt="ExplorerTweaks folder-controls logo" width="112">
+</p>
 
-![Version](https://img.shields.io/badge/Version-2.16.0-1DB954?style=for-the-badge)
-![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
-![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=for-the-badge&logo=windows)
-![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)
+# ExplorerTweaks v2.16.1
 
-ExplorerTweaks is a Windows File Explorer and shell configuration utility with a dark CustomTkinter GUI, live preview, profile import/export, and deployment tooling for local users, IT scripts, and PSRemoting.
+![Version](https://img.shields.io/badge/version-2.16.1-009dff?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-1DB954?style=flat-square)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6?style=flat-square)
 
-![Screenshot](screenshot.png)
+**Windows Explorer settings, in one place.**
 
-## Features
+Choose how files appear, adjust the taskbar, or save a setup to reuse on another PC. ExplorerTweaks pairs registry controls with an illustrated preview, so the options are easier to understand.
 
-- Live Explorer and taskbar preview for file extensions, hidden files, status bar, taskbar buttons, theme mode, and Windows 11 navigation items.
-- More than 50 File Explorer, taskbar, search, privacy, performance, and Windows 11 shell toggles.
-- Built-in presets for Minimal, Privacy, and Power User setups.
-- JSON profile export/import plus diff view against saved profiles or built-in presets.
-- CLI apply/export, dry-run mode, preset listing, recent-items wipe, and policy-lock warnings.
-- Shared registry plan/apply/verify/rollback engine for local GUI, CLI, preset, multi-user, and restore operations.
-- Targeted shell/theme refresh after supported changes, with forced Explorer restart kept as an explicit fallback.
-- Persistent GUI operation log/status panel plus structured JSON operation reports from CLI dry-runs.
-- Windows 11 25H2-aware OS detection and min/max build gates for setting catalog compatibility.
-- English message catalog for GUI chrome, Tools controls, dialogs, and accessibility labels.
-- Compact 1080px-wide GUI layout with wrapped tool action rows and high-contrast focus outlines.
-- Versioned release ZIP, SHA256 manifest, install notes, and optional Authenticode signing when a code-signing certificate is available.
-- Managed policy metadata for mapped settings plus Intune remediation detection/remediation script export.
-- Explorer folder-view defaults preview, backup, restore, and Details/List/Large Icons preset apply.
-- Context-menu inventory, reversible `LegacyDisable` toggles, and HKCU action-pack export/import.
-- PowerShell deployment script export for current-user or all-loaded-user registry hives.
-- PSRemoting profile push for fleets that already have WinRM access configured.
-- Multi-user local apply across `HKU\.DEFAULT` and loaded user SIDs.
-- Backup/restore bundles for ExplorerTweaks registry subtrees, wallpaper, and taskbar pins, with archive validation before restore.
-- Right-click shell entries that launch ExplorerTweaks focused on the relevant settings category.
-- Sunrise/sunset dark-mode auto-switch using Windows Location API or explicit latitude/longitude overrides.
-- Send To folder manager, classic context menu toggle, classic Photo Viewer registration, and `.reg` export.
+[Download the portable ZIP](https://github.com/SysAdminDoc/ExplorerTweaks/releases/download/v2.16.1/ExplorerTweaks-v2.16.1-win64.zip) · [All release files](https://github.com/SysAdminDoc/ExplorerTweaks/releases/tag/v2.16.1) · [Start safely](#start-safely)
 
-## Quick Start
+No installer or Python is needed for the Windows executable. Most per-user settings don't need administrator access. Normal GUI switches apply immediately; the preview isn't a separate approval step.
+
+![File display controls with an illustrated Explorer view](assets/screenshots/01-appearance.png)
+
+## What you can do
+
+| When you want to... | Start here |
+| --- | --- |
+| See file extensions, hidden files, or a fuller folder path | Appearance and Navigation group the relevant settings with explanations. |
+| Adjust taskbar buttons and Windows theme preferences | Taskbar and Theme illustrate supported choices. |
+| Reuse a preferred setup | Save a JSON profile, compare it with another setup, or export registry and PowerShell scripts. |
+| Prepare a deployment | Export mapped policy settings or Intune remediation scripts. PSRemoting uses access you've already configured. |
+| Recover from a change | Export a profile or create a targeted backup first. A bundle isn't a system restore point. |
+
+The catalog contains 41 registry settings, plus separate tools for folder-view defaults and context-menu entries. Availability depends on the Windows build and existing policies. Policy-locked GUI switches show a warning without attempting a write. A successful registry write doesn't guarantee that every Windows release still honors the setting.
+
+## See the controls
+
+| Taskbar | Theme |
+| --- | --- |
+| ![Taskbar settings and their illustration](assets/screenshots/03-taskbar.png) | ![Separate system and app theme controls](assets/screenshots/04-theme.png) |
+
+[Navigation view](assets/screenshots/02-navigation.png) · [Presets and tools](assets/screenshots/05-tools.png)
+
+These are captures of the actual CustomTkinter app using a Windows 11 sample configuration on a private desktop. The file list and taskbar are built-in illustrations, not a replacement for File Explorer or a view of your files. Capture mode blocks system commands. The [capture record](assets/screenshots/capture-report.json) identifies its source files and images by SHA-256.
+
+## Start safely
+
+1. Download and extract the versioned ZIP. Keep its files together if you want the illustrated guide and original artwork available offline.
+2. Compare the ZIP's SHA-256 with the checksum file from the same release.
+3. Run `ExplorerTweaks.exe`. Export a JSON profile before changing settings. The Tools page also offers a targeted backup bundle.
+4. Change one setting at a time. Some changes need a shell refresh or an Explorer restart.
+
+The executable isn't Authenticode-signed because no code-signing certificate is configured. Windows may show a security warning. Review the source and checksum; don't disable security software to run it.
+
+For a saved change plan instead of applying a preset:
+
+```powershell
+.\ExplorerTweaks.exe --preset "Power User" --dry-run --dry-run-report review.json
+```
+
+The report is written to the file you specify. The built-in Privacy preset changes selected Windows preferences; it isn't a guarantee of complete privacy.
+
+### Backups and removal
+
+Folder-view changes reset existing Explorer view bags. Use the built-in backup option before applying a folder-view preset. Profile exports and backup bundles cover their documented settings and files, not the whole computer. Review restore warnings.
+
+If you installed Shell Menu or Auto Dark integrations, remove them from Tools before deleting the app. Deleting the executable doesn't undo registry changes. Restore a saved profile or backup separately.
+
+## Run from source
+
+Python 3.10 or newer is required by the pinned dependencies.
 
 ```powershell
 git clone https://github.com/SysAdminDoc/ExplorerTweaks.git
 cd ExplorerTweaks
-pip install -r requirements.txt
-python explorer_tweaks.py
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe explorer_tweaks.py
 ```
 
-Build the portable executable:
-
-```powershell
-build.bat
-```
-
-The executable is written to `dist\ExplorerTweaks.exe`.
-
-`requirements.txt` uses exact pins for CustomTkinter, PyInstaller, and Pillow. `build.bat` creates a clean `.build-venv`, installs those pins with `python -m pip install --requirement requirements.txt`, runs `python -m pip check` inside that venv, and then builds through `ExplorerTweaks.spec`. Upgrade dependencies deliberately by changing the pins, running the test suite, rebuilding the EXE, and replacing the release artifact from a clean `dist` directory.
-
-Release builds write:
-
-- `dist\ExplorerTweaks.exe`
-- `dist\ExplorerTweaks-vX.Y.Z-win64.zip`
-- `dist\ExplorerTweaks-vX.Y.Z-SHA256SUMS.txt`
-- `dist\INSTALL.txt`
-
-Install by running the portable EXE directly or extracting the versioned ZIP to a folder you control. Uninstall by using Tools > Remove Shell Menu and Tools > Remove Auto Dark if those integrations were installed, then delete the EXE or extracted folder. Verify downloads with `Get-FileHash -Algorithm SHA256 ExplorerTweaks.exe` and compare against the SHA256 manifest. If a code-signing certificate is available in the local certificate store, `build.bat` signs the EXE before hashing and packaging; otherwise it records a warning and continues with unsigned artifacts.
+For the commands below, use your environment's Python. The portable executable accepts the same arguments in place of `python explorer_tweaks.py`, but it's a windowed build and doesn't print into a terminal. Use Python for terminal output, or use the executable's file exports and `--dry-run-report`.
 
 ## CLI Usage
 
@@ -145,12 +160,22 @@ Most settings do not require administrator rights. Multi-user mode can only touc
 
 ## Development
 
+Use PowerShell 7 for the release build:
+
 ```powershell
-python -m pip install --requirement requirements.txt
-python -m unittest discover -s tests -v
-python -m py_compile explorer_tweaks.py
-python explorer_tweaks.py --help
+build.bat
 ```
+
+The build creates a separate environment, installs the exact dependency pins, runs the tests, and exports the approved icon. Before packaging, it captures the built executable on a private desktop and checks that every image matches the reviewed guide. It produces a single-file executable, illustrated ZIP, checksums, and a release manifest in `dist`.
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe explorer_tweaks.py --help
+```
+
+Keep the [original logo studies](assets/brand/concepts/README.md) and untouched selected master when making new exports. The selected blue folder-controls identity is used by the app and Windows icon. [Share artwork](assets/marketing/README.md) is also included.
+
+Maintainer capture mode creates its own private desktop before importing the UI. It uses sample data and blocks registry writes and external commands. Generate candidate screenshots into a separate review folder, compare them at matching dimensions, and accept them only after review.
 
 ## License
 

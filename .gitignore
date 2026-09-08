@@ -6,6 +6,7 @@ dist/
 build/
 *.egg
 *.spec
+!ExplorerTweaks.spec
 .env
 .venv/
 venv/
