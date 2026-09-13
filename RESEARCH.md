@@ -1,4 +1,4 @@
-# Research - ExplorerTweaks
+# ExplorerTweaks research
 
 ## Executive Summary
 ExplorerTweaks is a Windows 10/11 File Explorer and shell configuration utility with a dark CustomTkinter GUI, live previews, JSON/.reg/.ps1 export, PSRemoting deployment, multi-loaded-user registry application, backup/restore bundles, context-menu entry install, and sunrise/sunset dark-mode automation. Its strongest shape is not deep shell replacement; it is reversible, registry-first Explorer policy for power users and small IT fleets. Highest-value direction: harden restore safety first, then add an auditable apply/rollback pipeline, richer enterprise exports, safer shell refresh, and focused Explorer/context-menu capabilities that stay registry-backed. Top opportunities: secure ZIP restore validation, transactional apply/rollback plans, operation logs and GUI status, 25H2-aware setting catalog, Intune/remediation export, folder-view defaults, context-menu cleanup/action packs, dependency/build pinning, accessibility/i18n pass, and signed/packaged distribution.

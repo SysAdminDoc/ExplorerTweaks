@@ -160,7 +160,7 @@ def capture(product):
                                  'file-extension switch', 'setting explanation', 'dry-run registry plan'])
         if getattr(sys, 'frozen', False):
             report['executableSha256'] = digest(sys.executable)
-        (output / 'capture-report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+        (output / 'capture-report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8', newline='\n')
     finally:
         if app is not None:
             app.destroy()

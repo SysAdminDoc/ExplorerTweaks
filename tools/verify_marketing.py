@@ -2,16 +2,23 @@
 """Reject stale screenshots, altered originals, broken guide links, and icon drift."""
 import argparse
 import json
-from pathlib import Path
 import re
+from io import BytesIO
+from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from PIL import Image
 
 try:
     from .capture_marketing import SOURCE_PATHS, digest
+    from .render_readme_hero import SIZE as HERO_SIZE
+    from .render_readme_hero import VISIBLE_COPY
+    from .render_readme_hero import render as render_readme_hero
 except ImportError:
     from capture_marketing import SOURCE_PATHS, digest
+    from render_readme_hero import SIZE as HERO_SIZE
+    from render_readme_hero import VISIBLE_COPY
+    from render_readme_hero import render as render_readme_hero
 
 ORIGINALS = {
     'direction-01-dimensional-folder.png': '2bd106ef47f9c55fd228d9c481bde172a31166e1bf0ca013602a145c758a9af2',
@@ -44,8 +51,14 @@ def verify_links(root, document):
 def verify(root):
     root = Path(root).resolve()
     source = (root / 'explorer_tweaks.py').read_text(encoding='utf-8')
-    version = re.search(r'^APP_VERSION = "([0-9.]+)"$', source, re.M)[1]
+    version = re.search(r'^APP_VERSION = "([0-9.]+)"$', source, re.MULTILINE)[1]
     readme = (root / 'README.md').read_text(encoding='utf-8')
+    hero_reference = 'assets/marketing/readme-hero.png'
+    first_content = next((line.strip() for line in readme.splitlines() if line.strip()), '')
+    require(first_content ==
+            '![ExplorerTweaks Windows settings with illustrated previews](assets/marketing/readme-hero.png)',
+            'The hero must be the first README content.')
+    require(readme.count(hero_reference) == 1, 'The README must reference the hero exactly once.')
     require(f'# ExplorerTweaks v{version}' in readme and f'badge/version-{version}-' in readme,
             'README version differs from the product.')
     require(f'/v{version}/ExplorerTweaks-v{version}-win64.zip' in readme, 'Download link is stale.')
@@ -55,8 +68,32 @@ def verify(root):
                 f"u'FileVersion', u'{version}.0'", f"u'ProductVersion', u'{version}.0'")), 'Executable version metadata differs.')
     for disclosure in ('switches apply immediately', 'sample configuration', "isn't Authenticode-signed"):
         require(disclosure in readme, 'Missing release disclosure: ' + disclosure)
-    for relative in ('README.md', 'assets/brand/concepts/README.md', 'assets/marketing/README.md'):
+    for relative in ('README.md', 'assets/brand/concepts/README.md', 'assets/marketing/README.md',
+                     'assets/concepts/2026-09-12-readme-hero/README.md'):
         verify_links(root, root / relative)
+    hero = root / hero_reference
+    archived_hero = root / 'assets/concepts/2026-09-12-readme-hero/readme-hero-final.png'
+    require(digest(hero) == digest(archived_hero), 'README hero differs from the selected archived final.')
+    require(version not in '\n'.join(VISIBLE_COPY)
+            and not re.search(r'(?i)\bv?\d+\.\d+(?:\.\d+)?\b', '\n'.join(VISIBLE_COPY)),
+            'README hero copy contains a release number.')
+    expected = BytesIO()
+    render_readme_hero(root).save(expected, format='PNG', optimize=True)
+    require(hero.read_bytes() == expected.getvalue(), 'README hero differs from its editable renderer.')
+    with Image.open(hero) as picture:
+        require(picture.format == 'PNG' and picture.mode == 'RGB' and picture.size == HERO_SIZE,
+                'README hero format or dimensions differ.')
+    hero_selection = json.loads((root / 'assets/concepts/2026-09-12-readme-hero/selection.json')
+                                .read_text(encoding='utf-8'))
+    require(hero_selection['stableRepositoryId'] == 'R_kgDORCe2Fw'
+            and hero_selection['selectedCandidate'] == 'readme-hero-candidate-02.png'
+            and hero_selection['productionAsset'] == '../../marketing/readme-hero.png'
+            and hero_selection['sha256'] == digest(hero)
+            and hero_selection['sourceLogoSha256'] == digest(root / 'assets/brand/explorertweaks-mark-master.png')
+            and hero_selection['sourceScreenshotSha256'] == digest(root / 'assets/screenshots/01-appearance.png')
+            and hero_selection['containsReleaseNumber'] is False
+            and hero_selection['readmeReferenceCount'] == 1,
+            'README hero selection record differs from the approved files.')
     social = root / 'assets/marketing/social-card.png'
     require(digest(social) == digest(root / 'assets/brand/concepts/share-card-concept.png'),
             'Share artwork differs from the archived concept.')
@@ -121,7 +158,12 @@ def verify(root):
     layout, = report['layouts']
     require(layout['component'] == 'Taskbar' and layout['width'] >= layout['tray'] + layout['icons'] + 30,
             'Taskbar illustration is clipped.')
-    return dict(version=version, originals=len(ORIGINALS), screenshots=len(captures), iconSizes=len(SIZES))
+    return {
+        'version': version,
+        'originals': len(ORIGINALS),
+        'screenshots': len(captures),
+        'iconSizes': len(SIZES),
+    }
 
 
 if __name__ == '__main__':

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "project": "ExplorerTweaks",
+  "stableRepositoryId": "R_kgDORCe2Fw",
+  "reviewedAt": "2026-09-12",
+  "selectedCandidate": "readme-hero-candidate-02.png",
+  "productionAsset": "../../marketing/readme-hero.png",
+  "archivedFinal": "readme-hero-final.png",
+  "dimensions": {
+    "width": 1280,
+    "height": 640
+  },
+  "sha256": "2c35c054fb18084ce851060fe5e208d81fb01b6f5c4693407ee0c6091f255ffc",
+  "sourceLogoSha256": "f655fa93a8d12c3676e1d070b893e7623c6f78a68311c5c504fc1685413bf27f",
+  "sourceScreenshot": "../../screenshots/01-appearance.png",
+  "sourceScreenshotSha256": "9504e8d7411385766a26fc93d72fb6efafcb53938ffa76191ccb14f69db982a7",
+  "containsReleaseNumber": false,
+  "readmeReferenceCount": 1,
+  "readmePlacement": "first-content",
+  "rejected": [
+    {
+      "file": "readme-hero-candidate-01.png",
+      "reason": "Supporting copy collided with the product frame."
+    }
+  ]
+}

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Regression checks for the product states shown in the guide."""
 import json
-from pathlib import Path
 import shutil
 import tempfile
-from types import SimpleNamespace
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import explorer_tweaks as product
@@ -77,7 +77,8 @@ class MarketingEvidenceTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         for folder in ('assets', 'branding'):
             shutil.copytree(ROOT / folder, self.root / folder)
-        for relative in (*capture_marketing.SOURCE_PATHS, 'README.md', 'LICENSE', 'screenshot.png', 'version_info.txt'):
+        for relative in (*capture_marketing.SOURCE_PATHS, 'README.md', 'LICENSE', 'screenshot.png',
+                         'version_info.txt', 'tools/render_readme_hero.py'):
             target = self.root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / relative, target)
@@ -126,6 +127,25 @@ class MarketingEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Broken local guide link'):
             verify_marketing.verify(self.root)
 
+    def test_readme_rejects_a_duplicate_hero(self):
+        path = self.root / 'README.md'
+        path.write_text(path.read_text(encoding='utf-8') +
+                        '\n![Repeated hero](assets/marketing/readme-hero.png)\n', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'exactly once'):
+            verify_marketing.verify(self.root)
+
+    def test_readme_rejects_content_before_the_hero(self):
+        path = self.root / 'README.md'
+        path.write_text('# Content before the hero\n\n' + path.read_text(encoding='utf-8'), encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'first README content'):
+            verify_marketing.verify(self.root)
+
+    def test_changed_readme_hero_is_rejected(self):
+        path = self.root / 'assets/marketing/readme-hero.png'
+        path.write_bytes(path.read_bytes() + b'changed')
+        with self.assertRaisesRegex(ValueError, 'archived final'):
+            verify_marketing.verify(self.root)
+
     def test_clipped_taskbar_is_rejected(self):
         self.report['layouts'][0]['width'] = 1
         self.save_report()
@@ -134,7 +154,7 @@ class MarketingEvidenceTests(unittest.TestCase):
 
     def test_numeric_version_drift_is_rejected(self):
         path = self.root / 'version_info.txt'
-        path.write_text(path.read_text(encoding='utf-8').replace('filevers=(2, 16, 1, 0)', 'filevers=(1, 0, 0, 0)'), encoding='utf-8')
+        path.write_text(path.read_text(encoding='utf-8').replace('filevers=(2, 16, 2, 0)', 'filevers=(1, 0, 0, 0)'), encoding='utf-8')
         with self.assertRaisesRegex(ValueError, 'version metadata'):
             verify_marketing.verify(self.root)
 

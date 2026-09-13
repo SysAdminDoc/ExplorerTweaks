@@ -1,8 +1,10 @@
-![ExplorerTweaks Windows settings with illustrated previews](assets/marketing/readme-hero.png)
+<p align="center">
+  <img src="branding/icon-256.png" alt="ExplorerTweaks folder-controls logo" width="112">
+</p>
 
-# ExplorerTweaks v2.16.2
+# ExplorerTweaks v2.16.1
 
-![Version](https://img.shields.io/badge/version-2.16.2-009dff?style=flat-square)
+![Version](https://img.shields.io/badge/version-2.16.1-009dff?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-1DB954?style=flat-square)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6?style=flat-square)
 
@@ -10,7 +12,7 @@
 
 Choose how files appear, adjust the taskbar, or save a setup to reuse on another PC. ExplorerTweaks pairs registry controls with an illustrated preview, so the options are easier to understand.
 
-[Download the portable ZIP](https://github.com/SysAdminDoc/ExplorerTweaks/releases/download/v2.16.2/ExplorerTweaks-v2.16.2-win64.zip) · [All release files](https://github.com/SysAdminDoc/ExplorerTweaks/releases/tag/v2.16.2) · [Start safely](#start-safely)
+[Download the portable ZIP](https://github.com/SysAdminDoc/ExplorerTweaks/releases/download/v2.16.1/ExplorerTweaks-v2.16.1-win64.zip) · [All release files](https://github.com/SysAdminDoc/ExplorerTweaks/releases/tag/v2.16.1) · [Start safely](#start-safely)
 
 No installer or Python is needed for the Windows executable. Most per-user settings don't need administrator access. Normal GUI switches apply immediately; the preview isn't a separate approval step.
 
@@ -172,8 +174,6 @@ The build creates a separate environment, installs the exact dependency pins, ru
 ```
 
 Keep the [original logo studies](assets/brand/concepts/README.md) and untouched selected master when making new exports. The selected blue folder-controls identity is used by the app and Windows icon. [Share artwork](assets/marketing/README.md) is also included.
-
-Render the README hero from the approved logo and reviewed product capture with `python tools/render_readme_hero.py`. The [hero decision archive](assets/concepts/2026-09-12-readme-hero/README.md) keeps both rejected candidates, the selected final, and responsive review images.
 
 Maintainer capture mode creates its own private desktop before importing the UI. It uses sample data and blocks registry writes and external commands. Generate candidate screenshots into a separate review folder, compare them at matching dimensions, and accept them only after review.
 

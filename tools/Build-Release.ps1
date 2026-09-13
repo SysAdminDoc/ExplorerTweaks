@@ -19,6 +19,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Dependency check failed.' }
     & $buildPython create_icon.py
     if ($LASTEXITCODE -ne 0) { throw 'Approved artwork export failed.' }
+    & $buildPython tools/render_readme_hero.py
+    if ($LASTEXITCODE -ne 0) { throw 'README hero rendering failed.' }
     & $buildPython -m unittest discover -s tests -q
     if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
     & $buildPython -m compileall -q explorer_tweaks.py create_icon.py tools tests

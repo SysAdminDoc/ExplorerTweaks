@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "product": "ExplorerTweaks",
-  "version": "2.16.2",
+  "version": "2.16.1",
   "sampleData": true,
   "privateDesktop": true,
   "systemCommands": false,
@@ -9,12 +9,12 @@
     {
       "path": "explorer_tweaks.py",
       "bytes": 260986,
-      "sha256": "905275e37db0482af85cfddd1c260f248a49288c06c6639d33f6339c529ed94a"
+      "sha256": "2c90a05ba485c6962d7d86c7299e233e465319dfe4e506e08e2baa098deff1ab"
     },
     {
       "path": "tools/capture_marketing.py",
-      "bytes": 8599,
-      "sha256": "a6c8a3539522684f005609fdee474f61e218a23a751f26866b875b746828b9ce"
+      "bytes": 8585,
+      "sha256": "d10c66e340f47a8c65f1e5527aca7f082963fb65cd8edad3cb114bdc4e3f58ef"
     },
     {
       "path": "requirements.txt",
@@ -48,40 +48,40 @@
       "category": "Appearance",
       "width": 1600,
       "height": 1000,
-      "bytes": 110943,
-      "sha256": "9504e8d7411385766a26fc93d72fb6efafcb53938ffa76191ccb14f69db982a7"
+      "bytes": 110918,
+      "sha256": "1766fdf3056b02ca9f08be49a34b64fde74851e088bd4ecf829d070980f827a9"
     },
     {
       "file": "02-navigation.png",
       "category": "Navigation",
       "width": 1600,
       "height": 1000,
-      "bytes": 99257,
-      "sha256": "0da05f36f120f9ce2996409314f6b6e0c6d640fd45185462a65f95aa898a1d9b"
+      "bytes": 99232,
+      "sha256": "9f7eceab09463c50f338f461271c6257222e16702f5258b2c89d0ea59fbb012e"
     },
     {
       "file": "03-taskbar.png",
       "category": "Taskbar",
       "width": 1600,
       "height": 1000,
-      "bytes": 70815,
-      "sha256": "8d91857a04adc3a87cbf84365d847835ad20691464f74a297c3f0376dfa4ad8c"
+      "bytes": 70788,
+      "sha256": "4749d239b99d66311519902b7e8fcbb72d6f7926ad8a82a35473e2358dcecf1c"
     },
     {
       "file": "04-theme.png",
       "category": "Theme",
       "width": 1600,
       "height": 1000,
-      "bytes": 50508,
-      "sha256": "393f930a387ae35db2270cc3af08468d328cc9cae2d969c768b1dc9c5c03f3ff"
+      "bytes": 50481,
+      "sha256": "d42c2ce96e60296efa6c4e9be4ed17dea37d9d0b8bc774ea620f436751998a4f"
     },
     {
       "file": "05-tools.png",
       "category": "Tools",
       "width": 1600,
       "height": 1000,
-      "bytes": 62606,
-      "sha256": "fd388674f50647f4e2ce3238e6a39e8634e3c0a05e088656d59bd9b9a55d4fa1"
+      "bytes": 62580,
+      "sha256": "b5a815193fd848b99ecc54bbf711d21cefa3cbceb10f8c4e8dd96fa6a31ad9b6"
     }
   ],
   "layouts": [

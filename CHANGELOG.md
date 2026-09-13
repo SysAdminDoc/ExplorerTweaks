@@ -2,6 +2,13 @@
 
 All notable changes to ExplorerTweaks will be documented in this file.
 
+## ExplorerTweaks v2.16.2 (2026-09-12)
+
+- Added a screenshot-led README hero built from the approved logo and an accurate private-desktop app capture.
+- Put the hero at the first line of the README and removed the redundant standalone logo.
+- Archived the rejected layout, selected final, source assets, and narrow-width reviews.
+- Added release checks for a single hero reference, fixed dimensions, reproducible rendering, and copy without a release number.
+
 ## ExplorerTweaks v2.16.1 (2026-09-08)
 
 - Applied the selected folder-controls identity and preserved the original logo studies.
@@ -196,15 +203,15 @@ No open items.
 
 ## Audit-Driven Items
 
-- [ ] P2 — Split dark_system and dark_apps into separate preview fields
+- [ ] P2: Split dark_system and dark_apps into separate preview fields
   Why: Both map to preview_key="dark_mode", so toggling one overwrites the other's preview state; the live preview shows a single dark/light mode that doesn't reflect Windows' split system-vs-app theming.
   Where: explorer_tweaks.py (RegistrySetting definitions, PreviewState, ThemePreview)
 
-- [ ] P3 — Validate context-menu action `icon` field
+- [ ] P3: Validate context-menu action `icon` field
   Why: The icon field passes through with zero validation while name/label/command are all pattern-checked; a malformed icon string is written directly to the registry.
   Where: explorer_tweaks.py validate_context_menu_action()
 
-- [ ] P3 — Add `disable_network_thumbs` to preview state
+- [ ] P3: Add `disable_network_thumbs` to preview state
   Why: The "No Network Thumbs" setting has no preview_key and no corresponding PreviewState field, so it has no live preview feedback.
   Where: explorer_tweaks.py get_all_settings(), PreviewState
 ```
