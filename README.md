@@ -6,6 +6,16 @@
 ![License](https://img.shields.io/badge/license-MIT-1DB954?style=flat-square)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6?style=flat-square)
 
+<p align="center">
+  <a href="https://ko-fi.com/X8K126YVER">
+    <img height="42" src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" alt="Buy me a coffee on Ko-fi" />
+  </a>
+</p>
+
+<p align="center">
+  <sub><em>If this project helps you, a coffee helps me keep working on it.</em></sub>
+</p>
+
 **Windows Explorer settings, in one place.**
 
 Choose how files appear, adjust the taskbar, or save a setup to reuse on another PC. ExplorerTweaks pairs registry controls with an illustrated preview, so the options are easier to understand.
